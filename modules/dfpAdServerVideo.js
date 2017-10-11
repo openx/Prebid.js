@@ -3,7 +3,7 @@
  */
 
 import { registerVideoSupport } from '../src/adServerManager';
-import { getWinningBids } from '../src/targeting';
+import { targeting } from '../src/targeting';
 import { formatQS, format as buildUrl } from '../src/url';
 import { parseSizesInput } from '../src/utils';
 
@@ -56,7 +56,7 @@ const defaultParamConstants = {
  */
 export default function buildDfpVideoUrl(options) {
   const adUnit = options.adUnit;
-  const bid = options.bid || getWinningBids(adUnit.code)[0];
+  const bid = options.bid || targeting.getWinningBids(adUnit.code)[0];
 
   const derivedParams = {
     correlator: Date.now(),
