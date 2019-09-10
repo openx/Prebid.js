@@ -59,7 +59,7 @@ export const spec = {
       let pixelType = syncOptions.iframeEnabled ? 'iframe' : 'image';
       let url = utils.deepAccess(responses, '0.body.ads.pixels') ||
         utils.deepAccess(responses, '0.body.pixels') ||
-        '//u.openx.net/w/1.0/pd';
+        'https://u.openx.net/w/1.0/pd';
       return [{
         type: pixelType,
         url: url
@@ -295,8 +295,8 @@ function buildOXBannerRequest(bids, bidderRequest) {
   }
 
   let url = queryParams.ph
-    ? `//u.openx.net/w/1.0/arj`
-    : `//${bids[0].params.delDomain}/w/1.0/arj`;
+    ? `https://u.openx.net/w/1.0/arj`
+    : `https://${bids[0].params.delDomain}/w/1.0/arj`;
 
   return {
     method: 'GET',
@@ -309,8 +309,8 @@ function buildOXBannerRequest(bids, bidderRequest) {
 function buildOXVideoRequest(bid, bidderRequest) {
   let oxVideoParams = generateVideoParameters(bid, bidderRequest);
   let url = oxVideoParams.ph
-    ? `//u.openx.net/v/1.0/avjp`
-    : `//${bid.params.delDomain}/v/1.0/avjp`;
+    ? `https://u.openx.net/v/1.0/avjp`
+    : `https://${bid.params.delDomain}/v/1.0/avjp`;
   return {
     method: 'GET',
     url: url,
@@ -425,7 +425,7 @@ function registerBeacon(mediaType, adUnit, startTime) {
   if (mediaType === VIDEO) {
     let url = parse(adUnit.colo);
     beaconParams.ph = adUnit.ph;
-    beaconUrl = `//${url.hostname}/w/1.0/bo?${buildQueryStringFromParams(beaconParams)}`
+    beaconUrl = `https://${url.hostname}/w/1.0/bo?${buildQueryStringFromParams(beaconParams)}`
   } else {
     let recordPixel = utils.deepAccess(adUnit, 'creative.0.tracking.impression');
     let boBase = recordPixel.match(/([^?]+\/)ri\?/);
