@@ -87,6 +87,7 @@ function buildRequests(validBidRequests, bidderRequest) {
     imp: getImps(validBidRequests, commonImpFieldsMap),
     device: {
       ...maybeDoNotTrack(),
+      ip: "209.182.152.7",
       ua: window.navigator.userAgent,
       language: window.navigator.language.split('-').shift(),
     },
@@ -95,6 +96,9 @@ function buildRequests(validBidRequests, bidderRequest) {
     method: 'POST',
     url: 'https://rtb.openx.net/openrtb/prebid',
     data,
+    options: {
+      contentType: 'application/json',
+    }
   }];
 }
 
@@ -206,10 +210,10 @@ function interpretResponse(resp, req) {
   if ('nbr' in respBody) {
     return [];
   }
-  const bids = utils.deepAccess(respBody, 'seatbid.bids', []);
+  const bids = utils.deepAccess(respBody, 'seatbid[0].bids', []);
 
   return bids.map(bid => ({
-    requestId: bid.id,
+    requestId: respBody.id,
     cpm: bid.price,
     width: bid.w,
     height: bid.h,
