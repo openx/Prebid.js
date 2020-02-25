@@ -36,6 +36,7 @@ function isBidRequestValid(bidRequest) {
   return !!(bidRequest.params.unit && hasDelDomainOrPlatform);
 }
 
+let impToBidIdMap = {};
 function buildRequests(validBidRequests, bidderRequest) {
   const hasBids = bidderRequest.bids.length > 0;
   const transactionID = hasBids ? bidderRequest.bids[0].transactionId : null;
@@ -63,7 +64,12 @@ function buildRequests(validBidRequests, bidderRequest) {
     }
     return fields;
   });
-  console.log('bidder request', bidderRequest);
+
+  // update imp to bid map with current request bids
+  impToBidIdMap = validBidRequests.reduce((impMap, bidRequest) => ({
+    ...impMap,
+    [bidRequest.transactionId]: bidRequest.bidId,
+  }), {});
   const data = {
     id: bidderRequest.auctionId,
     test: config.getConfig('debug') ? 1 : 0,
@@ -205,15 +211,16 @@ function getCommonImpFieldsMap(bidderRequest, delDomain, platformId) {
 }
 
 function interpretResponse(resp, req) {
-  console.log('interpretating response', req, resp);
+  const oxSeatBidName = 'OpenX';
   const respBody = resp.body;
   if ('nbr' in respBody) {
     return [];
   }
-  const bids = utils.deepAccess(respBody, 'seatbid[0].bids', []);
+  const oxSeatBid = respBody.seatbid
+    .find(seatbid => seatbid.seat === oxSeatBidName) || {bid: []};
 
-  return bids.map(bid => ({
-    requestId: respBody.id,
+  return oxSeatBid.bid.map(bid => ({
+    requestId: impToBidIdMap[bid.impid],
     cpm: bid.price,
     width: bid.w,
     height: bid.h,
@@ -221,7 +228,7 @@ function interpretResponse(resp, req) {
     dealId: bid.dealid,
     currency: respBody.cur || "USD",
     netRevenue: true,  // true?
-    // ttl: 360,  // secs before the bid expires and become unusable
+    ttl: 300,  // secs before the bid expires and become unusable, from oxBidAdapter
     ad: bid.adm,
   }));
 }
