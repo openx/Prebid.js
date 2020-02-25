@@ -2,7 +2,6 @@ import includes from 'core-js/library/fn/array/includes';
 import adapter from '../src/AnalyticsAdapter';
 import CONSTANTS from '../src/constants.json';
 import adapterManager from '../src/adapterManager';
-import { type } from 'os';
 
 const zlib = require('zlib');
 const utils = require('../src/utils');
@@ -342,14 +341,11 @@ function apiCall(url, MAX_RETRIES, payload) {
 }
 
 function getRandomUrl(failedUrl) {
-  let urlHead = 'http://';
-  let urlTail = '.sigmoid.io/publish/';
+  let urlHead = 'https://';
+  let urlTail = '.prebid.openx.net/publish/';
   let urlList = [
-    'sox-prebid',
-    'sox-prebid-1',
-    'sox-prebid-2',
-    'sox-prebid-3',
-    'sox-prebid-4'
+    'analytics',
+    'analytics-2'
   ];
   let randomIndex = Math.floor(Math.random() * urlList.length);
   let randomUrl = urlHead + urlList[randomIndex] + urlTail;
