@@ -3,7 +3,9 @@ import adapter from '../src/AnalyticsAdapter.js';
 import CONSTANTS from '../src/constants.json';
 import adapterManager from '../src/adapterManager.js';
 
-const zlib = require('zlib');
+// temp dependency on zlib to minimize payload
+const zlib = require('zlib');  // eslint-disable-line
+
 const utils = require('../src/utils.js');
 
 const urlParam = '';
@@ -162,7 +164,6 @@ function checkInitOptions() {
   let publisherPlatformId = getPublisherPlatformId();
   let publisherAccountId = getPublisherAccountId();
   let testCode = getTestCode();
-  let testCode = checkTestCode();
   if (publisherPlatformId && publisherAccountId && testCode) {
     return true;
   }
@@ -193,7 +194,7 @@ function filterBidsByAdUnit(bids) {
 
 function isValidEvent(eventType, adUnitCode) {
   if (checkAdUnitConfig()) {
-    let validationEvents = [bidAdjustmentConst, bidResponseConst, bidWonConst];
+    let validationEvents = [bidAdjustmentConst, bidResponseConst, bidWonConst, bidTimeoutConst];
     if (
       !includes(initOptions.adUnits, adUnitCode) &&
       includes(validationEvents, eventType)
@@ -247,19 +248,18 @@ let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }), {
       info.ad = '';
     }
 
-    let auctionId = info.auctionId;
-    // utils.logInfo('OX: Got auctionId', auctionId);
+    // on bid timeout events, the info is an array of bids
+    let auctionId = eventType === CONSTANTS.EVENTS.BID_TIMEOUT
+      ? info[0].auctionId
+      : info.auctionId;
 
     if (eventType === auctionInitConst) {
       eventStack[auctionId] = { options: {}, events: [] };
       // utils.logInfo('OX: Event Stack updated after AuctionInit', eventStack);
-    }
-    else if (eventType === bidWonConst) { // && auctionStatus[auctionId] !== 'started'
+    } else if (eventType === bidWonConst) {
       pushEvent(eventType, info, auctionId);
       // utils.logInfo('OX: Bid won called for', auctionId);
-      return;
-    }
-    else if (eventType === auctionEndConst) {
+    } else if (eventType === auctionEndConst) {
       pushEvent(eventType, removeads(info), auctionId);
       // utils.logInfo('OX: Auction end called for', auctionId);
       updateSessionId();
@@ -281,8 +281,7 @@ let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }), {
           // utils.logInfo('OX: Deleted Auction Info for auctionId', auctionId);
         }, AUCTION_END_WAIT_TIME);
       }
-    }
-    else if (eventType === bidTimeoutConst) {
+    } else if (eventType === bidTimeoutConst) {
       // utils.logInfo('SA: Bid Timedout for', auctionId);
       pushEvent(eventType, info, auctionId);
     }
@@ -487,13 +486,11 @@ function send(eventType, eventStack, auctionId) {
       utils.logError('OX: Invalid data format');
       delete eventStack[auctionId];
       // utils.logInfo('OX: Deleted Auction Info for auctionId', auctionId);
-      return;
     }
   } else {
     utils.logError('OX: Invalid data format');
     delete eventStack[auctionId];
     // utils.logInfo('OX: Deleted Auction Info for auctionId', auctionId);
-    return;
   }
 }
 function pushEvent(eventType, args, auctionId) {
@@ -506,7 +503,7 @@ function pushEvent(eventType, args, auctionId) {
     }
   } else {
     if (isValidEvent(eventType, args.adUnitCode)) {
-      eventStack[auctionId].events.push({ eventType: eventType, args: args });
+        eventStack[auctionId].events.push({ eventType: eventType, args: args });
     }
   }
 }
