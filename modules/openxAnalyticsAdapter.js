@@ -24,13 +24,11 @@ const bidTimeoutConst = CONSTANTS.EVENTS.BID_TIMEOUT;
 let initOptions = {
   publisherPlatformId: '',
   publisherAccountId: -1,
+  testCode: 'default',
   utmTagData: [],
   adUnits: []
 };
-let bidWon = { options: {}, events: [] };
-let eventStack = { options: {}, events: [] };
-
-let auctionStatus = 'not_started';
+let eventStack = {};
 
 let localStoragePrefix = 'openx_analytics_';
 let utmTags = [
@@ -107,47 +105,64 @@ function buildUtmLocalStorageTimeoutKey() {
 function buildUtmLocalStorageKey(utmMarkKey) {
   return localStoragePrefix.concat(utmMarkKey);
 }
+
 function checkPublisherPlatformId() {
   if (initOptions.publisherPlatformId !== undefined) {
     if (typeof initOptions.publisherPlatformId === 'string') {
       if (initOptions.publisherPlatformId !== '') {
         return initOptions.publisherPlatformId;
       } else {
-        utils.logError('SOX: Invalid PublisherPlatformId');
+        utils.logError('OX: Invalid PublisherPlatformId');
         return null;
       }
     } else {
-      utils.logError('SOX: Invalid datatype for PublisherPlatformId');
+      utils.logError('OX: Invalid datatype for PublisherPlatformId');
       return null;
     }
   } else {
-    utils.logError('SOX : PublisherPlatformId not defined');
+    utils.logError('OX: PublisherPlatformId not defined');
     return null;
   }
 }
+
 function checkPublisherAccountId() {
   if (initOptions.publisherAccountId !== undefined) {
     if (typeof initOptions.publisherAccountId === 'number') {
       if (initOptions.publisherAccountId > -1) {
         return initOptions.publisherAccountId;
       } else {
-        utils.logError('SOX: Invalid PublisherAccountId');
+        utils.logError('OX: Invalid PublisherAccountId');
         return null;
       }
     } else {
-      utils.logError('SOX: Invalid datatype for PublisherAccountId');
+      utils.logError('OX: Invalid datatype for PublisherAccountId');
       return null;
     }
   } else {
-    utils.logError('SOX : PublisherAccountId not defined');
+    utils.logError('OX: PublisherAccountId not defined');
     return null;
+  }
+}
+
+function checkTestCode() {
+  if (initOptions.testCode !== undefined) {
+    if (typeof initOptions.testCode === 'string') {
+      return initOptions.testCode;
+    } else {
+      utils.logError('OX: Invalid datatype for testCode');
+      return null;
+    }
+  } else {
+    utils.logInfo('OX: testCode not defined');
+    return 'default';
   }
 }
 
 function checkInitOptions() {
   let publisherPlatformId = checkPublisherPlatformId();
   let publisherAccountId = checkPublisherAccountId();
-  if (publisherPlatformId && publisherAccountId) {
+  let testCode = checkTestCode();
+  if (publisherPlatformId && publisherAccountId && testCode) {
     return true;
   }
   return false;
@@ -160,8 +175,9 @@ function checkAdUnitConfig() {
   return initOptions.adUnits.length > 0;
 }
 
-function buildEventStack() {
-  eventStack.options = initOptions;
+function buildEventStack(auctionId) {
+  eventStack[auctionId].options = initOptions;
+  utils.logInfo('OX: Options Initialized', eventStack);
 }
 
 function filterBidsByAdUnit(bids) {
@@ -176,7 +192,7 @@ function filterBidsByAdUnit(bids) {
 
 function isValidEvent(eventType, adUnitCode) {
   if (checkAdUnitConfig()) {
-    let validationEvents = [bidAdjustmentConst, bidResponseConst, bidWonConst, bidTimeoutConst];
+    let validationEvents = [bidAdjustmentConst, bidResponseConst, bidWonConst];
     if (
       !includes(initOptions.adUnits, adUnitCode) &&
       includes(validationEvents, eventType)
@@ -187,11 +203,13 @@ function isValidEvent(eventType, adUnitCode) {
   return true;
 }
 
-function isValidEventStack() {
-  if (eventStack.events.length > 0) {
-    return eventStack.events.some(function(event) {
+function isValidEventStack(auctionId) {
+  utils.logInfo('OX: Validating eventStack for', auctionId)
+  if (eventStack[auctionId].events.length > 0) {
+    return eventStack[auctionId].events.some(function(event) {
+      // utils.logInfo('OX: EventType of event ', event.eventType)
       return (
-        bidRequestConst === event.eventType || bidWonConst === event.eventType
+        bidRequestConst === event.eventType || bidResponseConst === event.eventType || bidAdjustmentConst === event.eventType || auctionEndConst === event.eventType || bidTimeoutConst === event.eventType
       );
     });
   }
@@ -216,8 +234,9 @@ function removeads(info) {
 
 let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }), {
   track({ eventType, args }) {
+
     if (!checkInitOptions()) {
-      send(eventType, {}, null, null);
+      send(eventType, {}, null);
       return;
     }
 
@@ -227,31 +246,44 @@ let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }), {
       info.ad = '';
     }
 
-    if (eventType === auctionInitConst) {
-      auctionStatus = 'started';
-    }
+    let auctionId = info.auctionId
+    // utils.logInfo('OX: Got auctionId', auctionId);
 
-    if (eventType === bidWonConst && auctionStatus === 'not_started') {
-      pushEvent(eventType, info);
-      utils.logInfo('SOX:Bid won called... ');
+    if (eventType === auctionInitConst) {
+      eventStack[auctionId] = { options: {}, events: [] };
+      // utils.logInfo('OX: Event Stack updated after AuctionInit', eventStack);
+    } 
+    else if (eventType === bidWonConst) { // && auctionStatus[auctionId] !== 'started'
+      pushEvent(eventType, info, auctionId);
+      // utils.logInfo('OX: Bid won called for', auctionId);
       return;
     }
-
-    if (eventType === auctionEndConst) {
-      pushEvent(eventType, removeads(info));
-      utils.logInfo('SOX:Auction end called... ');
+    else if (eventType === auctionEndConst) {
+      pushEvent(eventType, removeads(info), auctionId);
+      // utils.logInfo('OX: Auction end called for', auctionId);
       updateSessionId();
-      buildEventStack();
-      if (isValidEventStack()) {
-        auctionStatus = 'not_started';
+      buildEventStack(auctionId);
+      if (isValidEventStack(auctionId)) {
         setTimeout(function() {
-          let publisherPlatformId = eventStack.options.publisherPlatformId;
-          let publisherAccountId = eventStack.options.publisherAccountId;
-          send(eventType, eventStack, publisherPlatformId, publisherAccountId);
+          // utils.logInfo('OX: Sending data', eventStack);
+          send(
+            eventType,
+            eventStack,
+            auctionId
+          );
+          delete eventStack[auctionId];
+          // utils.logInfo('OX: Deleted Auction Info for auctionId', auctionId);
+        }, AUCTION_END_WAIT_TIME);
+      } else {
+        setTimeout(function() {
+          delete eventStack[auctionId];
+          // utils.logInfo('OX: Deleted Auction Info for auctionId', auctionId);
         }, AUCTION_END_WAIT_TIME);
       }
-    } else if (eventType === bidRequestConst || eventType === bidTimeoutConst) {
-      pushEvent(eventType, info);
+    } 
+    else if (eventType === bidTimeoutConst) {
+      // utils.logInfo('SA: Bid Timedout for', auctionId);
+      pushEvent(eventType, info, auctionId);
     }
   }
 });
@@ -260,6 +292,7 @@ openxAdapter.originEnableAnalytics = openxAdapter.enableAnalytics;
 
 openxAdapter.enableAnalytics = function(config) {
   initOptions = config.options;
+  initOptions.testCode = checkTestCode();
   initOptions.utmTagData = this.buildUtmTagData();
   utils.logInfo('OpenX Analytics enabled with config', initOptions);
   openxAdapter.originEnableAnalytics(config);
@@ -301,6 +334,7 @@ function buildPayload(
   eventType,
   publisherPlatformId,
   publisherAccountId,
+  testCode,
   sourceUrl
 ) {
   return {
@@ -308,21 +342,23 @@ function buildPayload(
     eventType: eventType,
     publisherPlatformId: publisherPlatformId,
     publisherAccountId: publisherAccountId,
+    testCode: testCode,
     sourceUrl: sourceUrl
   };
 }
-function apiCall(url, MAX_RETRIES, payload) {
+
+function apiCall(url, MAX_RETRIES, payload, auctionId) {
   let xhr = new XMLHttpRequest();
   xhr.onreadystatechange = function() {
     if (xhr.readyState !== 4) return;
     if (xhr.status >= 200 && xhr.status < 300) {
-      utils.logInfo('SOX: Data sent for event :', payload.eventType);
+      utils.logInfo('OX: Data sent for event:', payload.eventType);
     } else {
       if (MAX_RETRIES == 0) {
-        utils.logError('SOX:Retries Exhausted, Data could not be Sent!!');
+        utils.logError('OX: Retries Exhausted, Data could not be Sent!!');
         return;
       }
-      utils.logInfo('SOX:Retrying.....', MAX_RETRIES);
+      utils.logInfo('OX: Retrying ...', MAX_RETRIES);
       url = getRandomUrl(url);
       apiCall(url, MAX_RETRIES - 1, payload);
     }
@@ -404,11 +440,16 @@ function detectBrowser() {
   return 'Others';
 }
 
-function send(eventType, data, publisherPlatformId, publisherAccountId) {
+function send(eventType, eventStack, auctionId) {
   var ua = window.navigator.userAgent;
   var sourceUrl = window.location.href;
   var sourceBrowser = detectBrowser();
   var sourceOs = detectOS();
+  // utils.logInfo('OX: AuctionId', auctionId);
+  var data = eventStack[auctionId];
+  var publisherPlatformId = eventStack[auctionId].options.publisherPlatformId;
+  var publisherAccountId = eventStack[auctionId].options.publisherPlatformId;
+  var testCode = eventStack[auctionId].options.testCode;
   data['user_agent'] = ua;
   data['source_url'] = sourceUrl;
   data['source_browser'] = sourceBrowser;
@@ -420,7 +461,6 @@ function send(eventType, data, publisherPlatformId, publisherAccountId) {
   }
   if (typeof data === 'object') {
     const stringData = JSON.stringify(data);
-    console.log(stringData);
     if (typeof stringData === 'string') {
       const compressedData = zlib.gzipSync(stringData);
       let urlGenerated = getRandomUrl(null);
@@ -429,29 +469,34 @@ function send(eventType, data, publisherPlatformId, publisherAccountId) {
         eventType,
         publisherPlatformId,
         publisherAccountId,
+        testCode,
         sourceUrl
       );
-      apiCall(urlGenerated, MAX_RETRIES, payload);
+      apiCall(urlGenerated, MAX_RETRIES, payload, auctionId);
     } else {
-      utils.logError('SOX:Invalid data format');
+      utils.logError('OX: Invalid data format');
+      delete eventStack[auctionId];
+      // utils.logInfo('OX: Deleted Auction Info for auctionId', auctionId);
       return;
     }
   } else {
-    utils.logError('SOX:Invalid data format');
+    utils.logError('OX: Invalid data format');
+    delete eventStack[auctionId];
+    // utils.logInfo('OX: Deleted Auction Info for auctionId', auctionId);
     return;
   }
 }
-function pushEvent(eventType, args) {
+function pushEvent(eventType, args, auctionId) {
   if (eventType === bidRequestConst) {
     if (checkAdUnitConfig()) {
       args.bids = filterBidsByAdUnit(args.bids);
     }
     if (args.bids.length > 0) {
-      eventStack.events.push({ eventType: eventType });
+      eventStack[auctionId].events.push({ eventType: eventType });
     }
   } else {
     if (isValidEvent(eventType, args.adUnitCode)) {
-      eventStack.events.push({ eventType: eventType, args: args });
+      eventStack[auctionId].events.push({ eventType: eventType, args: args });
     }
   }
 }
