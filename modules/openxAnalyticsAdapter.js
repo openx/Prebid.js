@@ -193,7 +193,7 @@ function filterBidsByAdUnit(bids) {
 
 function isValidEvent(eventType, adUnitCode) {
   if (checkAdUnitConfig()) {
-    let validationEvents = [bidAdjustmentConst, bidResponseConst, bidWonConst, bidTimeoutConst];
+    let validationEvents = [bidAdjustmentConst, bidResponseConst, bidWonConst];
     if (
       !includes(initOptions.adUnits, adUnitCode) &&
       includes(validationEvents, eventType)
@@ -235,6 +235,7 @@ function removeads(info) {
 
 let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }), {
   track({ eventType, args }) {
+
     if (!checkInitOptions()) {
       send(eventType, {}, null);
       return;
@@ -481,7 +482,7 @@ function send(eventType, eventStack, auctionId) {
         testCode,
         sourceUrl
       );
-      apiCall(urlGenerated, MAX_RETRIES, payload);
+      apiCall(urlGenerated, MAX_RETRIES, payload, auctionId);
     } else {
       utils.logError('OX: Invalid data format');
       delete eventStack[auctionId];
