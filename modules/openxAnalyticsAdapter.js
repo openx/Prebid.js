@@ -162,6 +162,7 @@ function checkInitOptions() {
   let publisherPlatformId = getPublisherPlatformId();
   let publisherAccountId = getPublisherAccountId();
   let testCode = getTestCode();
+  let testCode = checkTestCode();
   if (publisherPlatformId && publisherAccountId && testCode) {
     return true;
   }
@@ -192,7 +193,7 @@ function filterBidsByAdUnit(bids) {
 
 function isValidEvent(eventType, adUnitCode) {
   if (checkAdUnitConfig()) {
-    let validationEvents = [bidAdjustmentConst, bidResponseConst, bidWonConst, bidTimeoutConst];
+    let validationEvents = [bidAdjustmentConst, bidResponseConst, bidWonConst];
     if (
       !includes(initOptions.adUnits, adUnitCode) &&
       includes(validationEvents, eventType)
@@ -234,6 +235,7 @@ function removeads(info) {
 
 let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }), {
   track({ eventType, args }) {
+
     if (!checkInitOptions()) {
       send(eventType, {}, null);
       return;
@@ -351,7 +353,7 @@ function buildPayload(
   };
 }
 
-function apiCall(url, MAX_RETRIES, payload) {
+function apiCall(url, MAX_RETRIES, payload, auctionId) {
   let xhr = new XMLHttpRequest();
   xhr.onreadystatechange = function() {
     if (xhr.readyState !== 4) return;
@@ -480,7 +482,7 @@ function send(eventType, eventStack, auctionId) {
         testCode,
         sourceUrl
       );
-      apiCall(urlGenerated, MAX_RETRIES, payload);
+      apiCall(urlGenerated, MAX_RETRIES, payload, auctionId);
     } else {
       utils.logError('OX: Invalid data format');
       delete eventStack[auctionId];
