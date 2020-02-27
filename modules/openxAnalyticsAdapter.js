@@ -482,7 +482,7 @@ function send(eventType, eventStack, auctionId) {
         testCode,
         sourceUrl
       );
-      apiCall(urlGenerated, MAX_RETRIES, payload, auctionId);
+      apiCall(urlGenerated, MAX_RETRIES, payload);
     } else {
       utils.logError('OX: Invalid data format');
       delete eventStack[auctionId];
