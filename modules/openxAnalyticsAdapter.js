@@ -106,7 +106,7 @@ function buildUtmLocalStorageKey(utmMarkKey) {
   return localStoragePrefix.concat(utmMarkKey);
 }
 
-function checkPublisherPlatformId() {
+function getPublisherPlatformId() {
   if (initOptions.publisherPlatformId !== undefined) {
     if (typeof initOptions.publisherPlatformId === 'string') {
       if (initOptions.publisherPlatformId !== '') {
@@ -125,7 +125,7 @@ function checkPublisherPlatformId() {
   }
 }
 
-function checkPublisherAccountId() {
+function getPublisherAccountId() {
   if (initOptions.publisherAccountId !== undefined) {
     if (typeof initOptions.publisherAccountId === 'number') {
       if (initOptions.publisherAccountId > -1) {
@@ -144,7 +144,7 @@ function checkPublisherAccountId() {
   }
 }
 
-function checkTestCode() {
+function getTestCode() {
   if (initOptions.testCode !== undefined) {
     if (typeof initOptions.testCode === 'string') {
       return initOptions.testCode;
@@ -159,9 +159,9 @@ function checkTestCode() {
 }
 
 function checkInitOptions() {
-  let publisherPlatformId = checkPublisherPlatformId();
-  let publisherAccountId = checkPublisherAccountId();
-  let testCode = checkTestCode();
+  let publisherPlatformId = getPublisherPlatformId();
+  let publisherAccountId = getPublisherAccountId();
+  let testCode = getTestCode();
   if (publisherPlatformId && publisherAccountId && testCode) {
     return true;
   }
@@ -292,7 +292,7 @@ openxAdapter.originEnableAnalytics = openxAdapter.enableAnalytics;
 
 openxAdapter.enableAnalytics = function(config) {
   initOptions = config.options;
-  initOptions.testCode = checkTestCode();
+  initOptions.testCode = getTestCode();
   initOptions.utmTagData = this.buildUtmTagData();
   utils.logInfo('OpenX Analytics enabled with config', initOptions);
   openxAdapter.originEnableAnalytics(config);
@@ -334,6 +334,7 @@ function buildPayload(
   eventType,
   publisherPlatformId,
   publisherAccountId,
+  auctionId,
   testCode,
   sourceUrl
 ) {
@@ -342,12 +343,13 @@ function buildPayload(
     eventType: eventType,
     publisherPlatformId: publisherPlatformId,
     publisherAccountId: publisherAccountId,
+    auctionId: auctionId,
     testCode: testCode,
     sourceUrl: sourceUrl
   };
 }
 
-function apiCall(url, MAX_RETRIES, payload, auctionId) {
+function apiCall(url, MAX_RETRIES, payload) {
   let xhr = new XMLHttpRequest();
   xhr.onreadystatechange = function() {
     if (xhr.readyState !== 4) return;
@@ -370,6 +372,9 @@ function apiCall(url, MAX_RETRIES, payload, auctionId) {
   }
   if (payload.publisherAccountId) {
     xhr.setRequestHeader('PublisherAccountId', payload.publisherAccountId);
+  }
+  if (payload.publisherAccountId) {
+    xhr.setRequestHeader('AuctionId', payload.auctionId);
   }
   xhr.setRequestHeader('Source-Url', payload.sourceUrl);
   xhr.timeout = MAX_TIMEOUT;
@@ -469,10 +474,11 @@ function send(eventType, eventStack, auctionId) {
         eventType,
         publisherPlatformId,
         publisherAccountId,
+        auctionId,
         testCode,
         sourceUrl
       );
-      apiCall(urlGenerated, MAX_RETRIES, payload, auctionId);
+      apiCall(urlGenerated, MAX_RETRIES, payload);
     } else {
       utils.logError('OX: Invalid data format');
       delete eventStack[auctionId];
