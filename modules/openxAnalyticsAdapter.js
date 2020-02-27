@@ -1,10 +1,10 @@
-import includes from 'core-js/library/fn/array/includes';
-import adapter from '../src/AnalyticsAdapter';
+import includes from 'core-js/library/fn/array/includes.js';
+import adapter from '../src/AnalyticsAdapter.js';
 import CONSTANTS from '../src/constants.json';
-import adapterManager from '../src/adapterManager';
+import adapterManager from '../src/adapterManager.js';
 
 const zlib = require('zlib');
-const utils = require('../src/utils');
+const utils = require('../src/utils.js');
 
 const urlParam = '';
 const analyticsType = 'endpoint';
@@ -252,7 +252,7 @@ let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }), {
     if (eventType === auctionInitConst) {
       eventStack[auctionId] = { options: {}, events: [] };
       // utils.logInfo('OX: Event Stack updated after AuctionInit', eventStack);
-    } 
+    }
     else if (eventType === bidWonConst) { // && auctionStatus[auctionId] !== 'started'
       pushEvent(eventType, info, auctionId);
       // utils.logInfo('OX: Bid won called for', auctionId);
@@ -280,7 +280,7 @@ let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }), {
           // utils.logInfo('OX: Deleted Auction Info for auctionId', auctionId);
         }, AUCTION_END_WAIT_TIME);
       }
-    } 
+    }
     else if (eventType === bidTimeoutConst) {
       // utils.logInfo('SA: Bid Timedout for', auctionId);
       pushEvent(eventType, info, auctionId);
@@ -453,7 +453,7 @@ function send(eventType, eventStack, auctionId) {
   // utils.logInfo('OX: AuctionId', auctionId);
   var data = eventStack[auctionId];
   var publisherPlatformId = eventStack[auctionId].options.publisherPlatformId;
-  var publisherAccountId = eventStack[auctionId].options.publisherPlatformId;
+  var publisherAccountId = eventStack[auctionId].options.publisherAccountId;
   var testCode = eventStack[auctionId].options.testCode;
   data['user_agent'] = ua;
   data['source_url'] = sourceUrl;
