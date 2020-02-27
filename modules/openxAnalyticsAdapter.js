@@ -383,7 +383,7 @@ function apiCall(url, MAX_RETRIES, payload) {
 
 function getRandomUrl(failedUrl) {
   let urlHead = 'https://';
-  let urlTail = 'https://analytics.prebid.openx.net/publish/';
+  let urlTail = '.prebid.openx.net/publish/';
   let urlList = [
     'analytics',
     'analytics-2'
