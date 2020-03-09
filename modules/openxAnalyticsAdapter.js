@@ -235,7 +235,6 @@ function removeads(info) {
 
 let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }), {
   track({ eventType, args }) {
-
     if (!checkInitOptions()) {
       send(eventType, {}, null);
       return;
