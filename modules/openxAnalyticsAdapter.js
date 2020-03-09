@@ -192,7 +192,7 @@ function filterBidsByAdUnit(bids) {
 
 function isValidEvent(eventType, adUnitCode) {
   if (checkAdUnitConfig()) {
-    let validationEvents = [bidAdjustmentConst, bidResponseConst, bidWonConst];
+    let validationEvents = [bidAdjustmentConst, bidResponseConst, bidWonConst, bidTimeoutConst];
     if (
       !includes(initOptions.adUnits, adUnitCode) &&
       includes(validationEvents, eventType)
@@ -234,7 +234,6 @@ function removeads(info) {
 
 let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }), {
   track({ eventType, args }) {
-
     if (!checkInitOptions()) {
       send(eventType, {}, null);
       return;
@@ -246,7 +245,7 @@ let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }), {
       info.ad = '';
     }
 
-    let auctionId = info.auctionId
+    let auctionId = info.auctionId;
     // utils.logInfo('OX: Got auctionId', auctionId);
 
     if (eventType === auctionInitConst) {
@@ -271,12 +270,12 @@ let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }), {
             eventStack,
             auctionId
           );
-          delete eventStack[auctionId];
+          eventStack[auctionId] = null;
           // utils.logInfo('OX: Deleted Auction Info for auctionId', auctionId);
         }, AUCTION_END_WAIT_TIME);
       } else {
         setTimeout(function() {
-          delete eventStack[auctionId];
+          eventStack[auctionId] = null;
           // utils.logInfo('OX: Deleted Auction Info for auctionId', auctionId);
         }, AUCTION_END_WAIT_TIME);
       }
@@ -295,6 +294,9 @@ openxAdapter.enableAnalytics = function(config) {
   initOptions.testCode = getTestCode();
   initOptions.utmTagData = this.buildUtmTagData();
   utils.logInfo('OpenX Analytics enabled with config', initOptions);
+
+  // set default sampling rate to 5%
+  config.options.sampling = config.options.sampling || 0.05;
   openxAdapter.originEnableAnalytics(config);
 };
 
@@ -383,10 +385,10 @@ function apiCall(url, MAX_RETRIES, payload) {
 
 function getRandomUrl(failedUrl) {
   let urlHead = 'https://';
-  let urlTail = '.prebid.openx.net/publish/';
+  let urlTail = '.openx.net/publish/';
   let urlList = [
-    'analytics',
-    'analytics-2'
+    'prebid-analytics',
+    'prebid-analytics-2'
   ];
   let randomIndex = Math.floor(Math.random() * urlList.length);
   let randomUrl = urlHead + urlList[randomIndex] + urlTail;
