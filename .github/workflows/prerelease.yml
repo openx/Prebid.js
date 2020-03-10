@@ -1,0 +1,25 @@
+name: Publish Prerelease
+on:
+  push:
+    branches:
+      - openx/master
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    if: "contains(github.event.head_commit.message, '[prerelease]')"
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 10
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@openx"
+      - name: Prepare Workspace (npm install)
+        run: |
+          npm install
+      - name: Publish to GPR
+        run: |
+          npm version prerelease --no-git-tag-version --preid=${{ github.sha }}
+          npm publish --registry "https://npm.pkg.github.com"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

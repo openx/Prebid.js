@@ -1,5 +1,5 @@
 {
-  "name": "prebid.js",
+  "name": "@openx/prebid.js",
   "version": "3.11.0-pre",
   "description": "Header Bidding Management Library",
   "main": "src/prebid.js",
@@ -9,7 +9,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/prebid/Prebid.js.git"
+    "url": "https://github.com/openx/prebid-js-internal.git"
   },
   "keywords": [
     "advertising",
