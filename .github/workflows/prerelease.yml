@@ -19,7 +19,7 @@ jobs:
           npm install
       - name: Publish to GPR
         run: |
-          npm version prerelease --no-git-tag-version --preid=${{ github.sha }}
+          npm version prerelease --no-git-tag-version --preid=${GITHUB_SHA:0:7}
           npm publish --registry "https://npm.pkg.github.com"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
