@@ -8,12 +8,20 @@ const SUPPORTED_AD_TYPES = [BANNER, VIDEO];
 const BIDDER_CODE = 'openx';
 const BIDDER_CONFIG = 'hb_pb';
 const BIDDER_VERSION = '3.0.1';
+const rtbBidderConfig = 'hb_pb_rtb_3.x.x';
 
 const USER_ID_CODE_TO_QUERY_ARG = {
   idl_env: 'lre', // liveramp
   pubcid: 'pubcid', // publisher common id
   tdid: 'ttduuid', // the trade desk
   criteoId: 'criteoid' // criteo id
+};
+
+const ab_test = {
+  rtb_chance_val: Math.random(),
+  cc_set_chance_val: Math.random(),
+  rtb_chance_threshold: 0,
+  cc_set_chance_threshold: 0,
 };
 
 export const spec = {
@@ -27,33 +35,8 @@ export const spec = {
 
     return !!(bidRequest.params.unit && hasDelDomainOrPlatform);
   },
-  buildRequests: function (bidRequests, bidderRequest) {
-    if (bidRequests.length === 0) {
-      return [];
-    }
-
-    let requests = [];
-    let [videoBids, bannerBids] = partitionByVideoBids(bidRequests);
-
-    // build banner requests
-    if (bannerBids.length > 0) {
-      requests.push(buildOXBannerRequest(bannerBids, bidderRequest));
-    }
-    // build video requests
-    if (videoBids.length > 0) {
-      videoBids.forEach(videoBid => {
-        requests.push(buildOXVideoRequest(videoBid, bidderRequest))
-      });
-    }
-
-    return requests;
-  },
-  interpretResponse: function ({body: oxResponseObj}, serverRequest) {
-    let mediaType = getMediaTypeFromRequest(serverRequest);
-
-    return mediaType === VIDEO ? createVideoBidResponses(oxResponseObj, serverRequest.payload)
-      : createBannerBidResponses(oxResponseObj, serverRequest.payload);
-  },
+  buildRequests: buildRequestRouter,
+  interpretResponse: interpretResponseRouter,
   getUserSyncs: function (syncOptions, responses, gdprConsent, uspConsent) {
     if (syncOptions.iframeEnabled || syncOptions.pixelEnabled) {
       let pixelType = syncOptions.iframeEnabled ? 'iframe' : 'image';
@@ -74,6 +57,153 @@ export const spec = {
     }, params);
   }
 };
+
+function buildRequestRouter(validBidRequests, bidderRequest) {
+  const bidRequestWithORTBTestRate = validBidRequests.find(bidRequest =>
+    bidRequest.params.ortbTestRate) || {params:{ortbTestRate: 0.0}};
+  ab_test.rtb_chance_threshold = bidRequestWithORTBTestRate.params.ortbTestRate;
+  const bidRequesWithCCSetParam = validBidRequests.find(bidRequest =>
+    bidRequest.params.ccNoRedirectParamRate) || {params:{ccNoRedirectParamRate: 0.0}};
+  ab_test.cc_set_chance_threshold = bidRequesWithCCSetParam.params.ccNoRedirectParamRate;
+
+  if (ab_test.rtb_chance_val < ab_test.rtb_chance_threshold) {
+    return buildRtbRequests(validBidRequests, bidderRequest);
+  }
+  return buildArjRequests(validBidRequests, bidderRequest);
+}
+
+let impToBidIdMap = {};
+function buildRtbRequests(validBidRequests, bidderRequest) {
+  const hasBids = bidderRequest.bids.length > 0;
+  const transactionID = hasBids ? bidderRequest.bids[0].transactionId : null;
+  if (!hasBids || !transactionID) {
+    return [];
+  }
+
+  // const bc = bidderRequest.bids[0].params.bc || rtbBidderConfig;
+  // force the bc so testing can be tracked
+  const bc = rtbBidderConfig;
+  const delDomain = bidderRequest.bids[0].params.delDomain || null;
+  const platformId = bidderRequest.bids[0].params.platform || null;
+  const oxDefaultBidRespTTLSecs = 300;
+  const configPageUrl = config.getConfig('pageUrl');
+  const commonImpFieldsMap = getCommonImpFieldsMap(bidderRequest,
+    delDomain, platformId);
+  const maybeDoNotTrack = () => !window.navigator.doNotTrack
+    ? {}
+    : {dnt: window.navigator.doNotTrack};
+  const maybePlatformIdOrDelDomain = ((delDomain, platId) => {
+    let fields = {};
+    if (platId) {
+      fields = {...fields, platformId: platId};
+    }
+    if (delDomain) {
+      fields = {...fields, delDomain};
+    }
+    return fields;
+  });
+
+  // update imp to bid map with current request bids
+  impToBidIdMap = validBidRequests.reduce((impMap, bidRequest) => ({
+    ...impMap,
+    [bidRequest.transactionId]: bidRequest.bidId,
+  }), {});
+  const data = {
+    id: bidderRequest.auctionId,
+    test: config.getConfig('debug') ? 1 : 0,
+    cur: ['USD'],
+    at: 1,   // (1: first-price-, 2: second-price-) auction
+    tmax: (config.getConfig('ttl') || oxDefaultBidRespTTLSecs) * 1000,
+    site: {
+      domain: configPageUrl || utils.getWindowTop().location.hostname,
+      page: configPageUrl
+                || bidderRequest.refererInfo.canonicalUrl
+                || bidderRequest.refererInfo.referer,
+      ref: bidderRequest.refererInfo.referer,
+    },
+    regs: {
+      coppa: config.getConfig('coppa') === true ? 1 : 0,
+    },
+    ext: {
+      ...maybePlatformIdOrDelDomain(delDomain, platformId),
+      bc,
+    },
+    imp: getImps(validBidRequests, commonImpFieldsMap),
+    device: {
+      ...maybeDoNotTrack(),
+      ip: "209.182.152.7",
+      ua: window.navigator.userAgent,
+      language: window.navigator.language.split('-').shift(),
+    },
+  };
+  return [{
+    method: 'POST',
+    url: 'https://rtb.openx.net/openrtb/prebid',
+    data,
+    options: {
+      contentType: 'application/json',
+    }
+  }];
+}
+
+function buildArjRequests(bidRequests, bidderRequest) {
+  if (bidRequests.length === 0) {
+    return [];
+  }
+
+  let requests = [];
+  let [videoBids, bannerBids] = partitionByVideoBids(bidRequests);
+
+  // build banner requests
+  if (bannerBids.length > 0) {
+    requests.push(buildOXBannerRequest(bannerBids, bidderRequest));
+  }
+  // build video requests
+  if (videoBids.length > 0) {
+    videoBids.forEach(videoBid => {
+      requests.push(buildOXVideoRequest(videoBid, bidderRequest))
+    });
+  }
+
+  return requests;
+}
+
+function interpretResponseRouter(resp, req) {
+  if (ab_test.rtb_chance_val < ab_test.rtb_chance_threshold) {
+    return interpretRtbResponse(resp, req);
+  }
+  return interpretArjResponse(resp, req);
+}
+
+function interpretRtbResponse(resp, req) {
+  const oxSeatBidName = 'OpenX';
+  const respBody = resp.body;
+  if ('nbr' in respBody) {
+    return [];
+  }
+  const oxSeatBid = respBody.seatbid
+    .find(seatbid => seatbid.seat === oxSeatBidName) || {bid: []};
+
+  return oxSeatBid.bid.map(bid => ({
+    requestId: impToBidIdMap[bid.impid],
+    cpm: bid.price,
+    width: bid.w,
+    height: bid.h,
+    creativeId: bid.crid,
+    dealId: bid.dealid,
+    currency: respBody.cur || "USD",
+    netRevenue: true,  // true?
+    ttl: 300,  // secs before the bid expires and become unusable, from oxBidAdapter
+    ad: bid.adm,
+  }));
+}
+
+function interpretArjResponse({body: oxResponseObj}, serverRequest) {
+  let mediaType = getMediaTypeFromRequest(serverRequest);
+
+  return mediaType === VIDEO ? createVideoBidResponses(oxResponseObj, serverRequest.payload)
+    : createBannerBidResponses(oxResponseObj, serverRequest.payload);
+}
 
 function generateDefaultSyncUrl(gdprConsent, uspConsent) {
   let url = 'https://u.openx.net/w/1.0/pd';
@@ -329,6 +459,10 @@ function buildOXBannerRequest(bids, bidderRequest) {
   if (hasCustomFloor) {
     queryParams.aumfs = customFloorsForAllBids.join(',');
   }
+  if (ab_test.cc_set_chance_val < ab_test.cc_set_chance_threshold) {
+    queryParams.cc = 1;
+    queryParams.bc = `${queryParams.bc}_cc`;
+  }
 
   let url = queryParams.ph
     ? `https://u.openx.net/w/1.0/arj`
@@ -430,6 +564,108 @@ function createVideoBidResponses(response, {bid, startTime}) {
   }
 
   return bidResponses;
+}
+
+/**
+ * converts any valid bid request to an impression field
+ * see: http://prebid.org/dev-docs/bidder-adaptor.html#bidrequest-parameters
+ * @param validBidRequests
+ * @param commonImpFieldsMap
+ * @return openRTB imp[]
+ */
+function getImps(validBidRequests, commonImpFieldsMap) {
+  const maybeImpExt = customParams => customParams ? {ext: {customParams}} : {};
+  const maybeImpRegs = regs => Object.keys(regs.ext).length > 0 ? {regs} : null;
+  const maybeImpUser = user => Object.keys(user.ext).length > 0 ? {user} : null;
+
+  return validBidRequests.map(bidRequest => ({
+    id: bidRequest.transactionId,
+    tagid: bidRequest.params.unit,
+    bidfloor: bidRequest.params.customFloor || 0,  //default bidfloorcurrency is USD
+    ...getBannerImp(bidRequest),
+    ...getVideoImp(bidRequest),
+    ...maybeImpRegs(commonImpFieldsMap.regs),
+    ...maybeImpUser(commonImpFieldsMap.user),
+    ...maybeImpExt(bidRequest.params.customParams),
+  }));
+}
+
+function getBannerImp(bidRequest) {
+  if (!bidRequest.mediaTypes.banner) {
+    return null;
+  }
+  // each size element is of the format [w, h]
+  // mediaTypeSizes is an array of size elements, e.g. [[w, h], [w, h], ...]
+  const toBannerImpFormatArray = mediaTypeSizes =>
+    mediaTypeSizes.map(([w, h]) => ({w, h}));
+  return {
+    banner: {
+      id: bidRequest.bidId,
+      topframe: utils.inIframe() ? 1 : 0,
+      format: toBannerImpFormatArray(bidRequest.mediaTypes.banner.sizes),
+    },
+  };
+}
+
+/**
+ * for the openrtb param, see: https://docs.openx.com/Content/developers/containers/prebid-video-adapter.html
+ * @param bidRequest
+ * @return {null|{video: {w: *, h: *, id: number}}}
+ */
+function getVideoImp(bidRequest) {
+  if (!bidRequest.mediaTypes.video) {
+    return null;
+  }
+  if (bidRequest.params.openrtb) {
+    return {
+      video: {...bidRequest.params.openrtb, id: 1},
+    };
+  }
+  const [w, h] = bidRequest.mediaTypes.video.playerSize[0];
+  return {
+    video: {
+      id: bidRequest.bidId,
+      w,
+      h,
+    },
+  };
+}
+
+/**
+ * typical fields are gdpr, usp and maybe global hb_pb settings
+ * @param bidderRequest see auction.js:L30
+ * @param delDomain string?
+ * @param platformId string?
+ * @return {{ext: {customParams: ?}, regs: {ext: {us_privacy: string, gdpr: boolean}}, user: {ext: {consent: string}}}}
+ */
+function getCommonImpFieldsMap(bidderRequest, delDomain, platformId) {
+  const doesGdprApply = utils.deepAccess(bidderRequest,
+    'gdprConsent.gdprApplies', null);
+  const maybeEmptyGdprConsentString = utils.deepAccess(bidderRequest,
+    'gdprConsent.consentString', null);
+
+  const stripNullVals = map =>
+    Object.entries(map)
+      .filter(([key, val]) => null !== val)    // filter out null values
+      // convert the rest back to fields
+      .reduce((newMap, [key, val]) => ({
+        ...newMap,
+        [key]: typeof val !== 'object' ? val : stripNullVals(val),
+      }), {});
+
+  return stripNullVals({
+    regs: {
+      ext: {
+        gdpr: doesGdprApply !== null ? !!doesGdprApply : null,
+        us_privacy: bidderRequest.uspConsent || null,
+      },
+    },
+    user: {
+      ext: {
+        consent: maybeEmptyGdprConsentString,
+      },
+    },
+  });
 }
 
 registerBidder(spec);
