@@ -193,7 +193,7 @@ function filterBidsByAdUnit(bids) {
 
 function isValidEvent(eventType, adUnitCode) {
   if (checkAdUnitConfig()) {
-    let validationEvents = [bidAdjustmentConst, bidResponseConst, bidWonConst];
+    let validationEvents = [bidAdjustmentConst, bidResponseConst, bidWonConst, bidTimeoutConst];
     if (
       !includes(initOptions.adUnits, adUnitCode) &&
       includes(validationEvents, eventType)
