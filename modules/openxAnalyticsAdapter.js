@@ -375,7 +375,7 @@ function apiCall(url, MAX_RETRIES, payload) {
   if (payload.publisherAccountId) {
     xhr.setRequestHeader('PublisherAccountId', payload.publisherAccountId);
   }
-  if (payload.publisherAccountId) {
+  if (payload.auctionId) {
     xhr.setRequestHeader('AuctionId', payload.auctionId);
   }
   xhr.setRequestHeader('Source-Url', payload.sourceUrl);
