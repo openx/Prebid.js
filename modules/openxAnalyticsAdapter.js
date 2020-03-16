@@ -192,7 +192,7 @@ function filterBidsByAdUnit(bids) {
 
 function isValidEvent(eventType, adUnitCode) {
   if (checkAdUnitConfig()) {
-    let validationEvents = [bidAdjustmentConst, bidResponseConst, bidWonConst];
+    let validationEvents = [bidAdjustmentConst, bidResponseConst, bidWonConst, bidTimeoutConst];
     if (
       !includes(initOptions.adUnits, adUnitCode) &&
       includes(validationEvents, eventType)
@@ -373,7 +373,7 @@ function apiCall(url, MAX_RETRIES, payload) {
   if (payload.publisherAccountId) {
     xhr.setRequestHeader('PublisherAccountId', payload.publisherAccountId);
   }
-  if (payload.publisherAccountId) {
+  if (payload.auctionId) {
     xhr.setRequestHeader('AuctionId', payload.auctionId);
   }
   xhr.setRequestHeader('Source-Url', payload.sourceUrl);
