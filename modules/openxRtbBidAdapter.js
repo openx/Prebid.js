@@ -44,7 +44,7 @@ function buildRequests(validBidRequests, bidderRequest) {
     return [];
   }
 
-  const bc = bidderRequest.bids[0].params.bc || bidderConfig;
+  const bc = bidderRequest.bids[0].params.bc || `${bidderConfig}_${bidderVersion}`;
   const delDomain = bidderRequest.bids[0].params.delDomain || null;
   const platformId = bidderRequest.bids[0].params.platform || null;
   const oxDefaultBidRespTTLSecs = 300;
