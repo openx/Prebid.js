@@ -1,12 +1,10 @@
 name: Publish Prerelease
 on:
-  push:
-    branches:
-      - openx/master
+  release:
+    types: [prereleased]
 jobs:
   publish:
     runs-on: ubuntu-latest
-    if: "contains(github.event.head_commit.message, '[prerelease]')"
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
