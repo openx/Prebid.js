@@ -162,7 +162,6 @@ function checkInitOptions() {
   let publisherPlatformId = getPublisherPlatformId();
   let publisherAccountId = getPublisherAccountId();
   let testCode = getTestCode();
-  let testCode = checkTestCode();
   if (publisherPlatformId && publisherAccountId && testCode) {
     return true;
   }
@@ -193,7 +192,7 @@ function filterBidsByAdUnit(bids) {
 
 function isValidEvent(eventType, adUnitCode) {
   if (checkAdUnitConfig()) {
-    let validationEvents = [bidAdjustmentConst, bidResponseConst, bidWonConst];
+    let validationEvents = [bidAdjustmentConst, bidResponseConst, bidWonConst, bidTimeoutConst];
     if (
       !includes(initOptions.adUnits, adUnitCode) &&
       includes(validationEvents, eventType)
@@ -235,7 +234,6 @@ function removeads(info) {
 
 let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }), {
   track({ eventType, args }) {
-
     if (!checkInitOptions()) {
       send(eventType, {}, null);
       return;
