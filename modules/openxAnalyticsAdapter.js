@@ -281,6 +281,7 @@ let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }), {
       }
     }
     else if (eventType === bidTimeoutConst) {
+      let auctionId = info[0].auctionId
       // utils.logInfo('SA: Bid Timedout for', auctionId);
       pushEvent(eventType, info, auctionId);
     }
