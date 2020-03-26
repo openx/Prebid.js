@@ -3,7 +3,9 @@ import adapter from '../src/AnalyticsAdapter.js';
 import CONSTANTS from '../src/constants.json';
 import adapterManager from '../src/adapterManager.js';
 
-const zlib = require('zlib');
+// temp dependency on zlib to minimize payload
+const zlib = require('zlib');  // eslint-disable-line
+
 const utils = require('../src/utils.js');
 
 const urlParam = '';
@@ -162,7 +164,6 @@ function checkInitOptions() {
   let publisherPlatformId = getPublisherPlatformId();
   let publisherAccountId = getPublisherAccountId();
   let testCode = getTestCode();
-  let testCode = checkTestCode();
   if (publisherPlatformId && publisherAccountId && testCode) {
     return true;
   }
@@ -502,13 +503,7 @@ function pushEvent(eventType, args, auctionId) {
     }
   } else {
     if (isValidEvent(eventType, args.adUnitCode)) {
-      if (eventType === CONSTANTS.EVENTS.BID_TIMEOUT) {
-        // convert object to array
-        let timedOutBids = utils._map(args, timedOutBid => timedOutBid);
-        eventStack[auctionId].events.push({ eventType: eventType, args: timedOutBids });
-      } else {
         eventStack[auctionId].events.push({ eventType: eventType, args: args });
-      }
     }
   }
 }
