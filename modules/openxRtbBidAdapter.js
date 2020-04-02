@@ -93,14 +93,13 @@ function buildRequests(validBidRequests, bidderRequest) {
     imp: getImps(validBidRequests, commonImpFieldsMap),
     device: {
       ...maybeDoNotTrack(),
-      ip: "209.182.152.7",
       ua: window.navigator.userAgent,
       language: window.navigator.language.split('-').shift(),
     },
   };
   return [{
     method: 'POST',
-    url: 'https://rtb.openx.net/openrtb/prebid',
+    url: 'https://rtb.openx.net/openrtbb/prebidjs',
     data,
     options: {
       contentType: 'application/json',
