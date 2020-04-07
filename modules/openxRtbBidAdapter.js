@@ -47,7 +47,6 @@ function buildRequests(validBidRequests, bidderRequest) {
   const bc = bidderRequest.bids[0].params.bc || bidderConfig;
   const delDomain = bidderRequest.bids[0].params.delDomain || null;
   const platformId = bidderRequest.bids[0].params.platform || null;
-  const oxDefaultBidRespTTLSecs = 300;
   const configPageUrl = config.getConfig('pageUrl');
   const commonImpFieldsMap = getCommonImpFieldsMap(bidderRequest,
     delDomain, platformId);
@@ -72,10 +71,9 @@ function buildRequests(validBidRequests, bidderRequest) {
   }), {});
   const data = {
     id: bidderRequest.auctionId,
-    test: config.getConfig('debug') ? 1 : 0,
     cur: ['USD'],
     at: 1,   // (1: first-price-, 2: second-price-) auction
-    tmax: (config.getConfig('ttl') || oxDefaultBidRespTTLSecs) * 1000,
+    tmax: config.getConfig('bidderTimeout'),  // defaults to 3000msecs
     site: {
       domain: configPageUrl || utils.getWindowTop().location.hostname,
       page: configPageUrl
@@ -211,6 +209,7 @@ function getCommonImpFieldsMap(bidderRequest, delDomain, platformId) {
 
 function interpretResponse(resp, req) {
   const oxSeatBidName = 'OpenX';
+  const oxDefaultBidRespTTLSecs = 300;
   const respBody = resp.body;
   if ('nbr' in respBody) {
     return [];
@@ -227,7 +226,7 @@ function interpretResponse(resp, req) {
     dealId: bid.dealid,
     currency: respBody.cur || "USD",
     netRevenue: true,  // true?
-    ttl: 300,  // secs before the bid expires and become unusable, from oxBidAdapter
+    ttl: oxDefaultBidRespTTLSecs,  // secs before the bid expires and become unusable, from oxBidAdapter
     ad: bid.adm,
   }));
 }
