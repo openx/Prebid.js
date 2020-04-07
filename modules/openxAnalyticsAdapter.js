@@ -11,6 +11,9 @@ const utils = require('../src/utils.js');
 const urlParam = '';
 const analyticsType = 'endpoint';
 
+const ADAPTER_VERSION = '0.1';
+const SCHEMA_VERSION = '0.1';
+
 const MAX_RETRIES = 2;
 const MAX_TIMEOUT = 10000;
 const AUCTION_END_WAIT_TIME = 2000;
@@ -342,6 +345,8 @@ function buildPayload(
   sourceUrl
 ) {
   return {
+    adapterVersion: ADAPTER_VERSION,
+    schemaVersion: SCHEMA_VERSION,
     data: data,
     eventType: eventType,
     publisherPlatformId: publisherPlatformId,
