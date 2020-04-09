@@ -81,6 +81,7 @@ function buildRequests(validBidRequests, bidderRequest) {
               || bidderRequest.refererInfo.referer,
       ref: bidderRequest.refererInfo.referer,
     },
+    user: getUser(validBidRequests[0].userId, validBidRequests[0].userIdAsEids),
     regs: {
       coppa: config.getConfig('coppa') === true ? 1 : 0,
     },
@@ -205,6 +206,34 @@ function getCommonImpFieldsMap(bidderRequest, delDomain, platformId) {
       },
     },
   });
+}
+
+/**
+ * gets a userId field by parsing pbjs user id module enrichments
+ * @param userIdDataMap
+ * @param eids openrtb eids https://github.com/prebid/Prebid.js/blob/3.12.0/modules/userId/index.js#L280
+ */
+function getUser(userIdDataMap, eids) {
+  if (!userIdDataMap) {
+    return {};
+  }
+
+  const maybeDigitrust = getMaybeDigitrustId(userIdDataMap);
+  return {
+    ext: {
+      eids,
+      ...maybeDigitrust,
+    }
+  };
+
+  function getMaybeDigitrustId(userIdDataMap) {
+    const maybeDigitrustData = userIdDataMap.digitrustid && userIdDataMap.digitrustid.data;
+    const {id, keyv} = maybeDigitrustData || {};
+    if (!id) {
+      return null;
+    }
+    return {digitrust: {id, keyv,}};
+  }
 }
 
 function interpretResponse(resp, req) {
