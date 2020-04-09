@@ -17,6 +17,7 @@ const SCHEMA_VERSION = '0.1';
 const MAX_RETRIES = 2;
 const MAX_TIMEOUT = 10000;
 const AUCTION_END_WAIT_TIME = 2000;
+const DEFAULT_SLOT_LOAD_BUFFER_TIME = 100;
 
 const auctionInitConst = CONSTANTS.EVENTS.AUCTION_INIT;
 const auctionEndConst = CONSTANTS.EVENTS.AUCTION_END;
@@ -25,15 +26,21 @@ const bidRequestConst = CONSTANTS.EVENTS.BID_REQUESTED;
 const bidAdjustmentConst = CONSTANTS.EVENTS.BID_ADJUSTMENT;
 const bidResponseConst = CONSTANTS.EVENTS.BID_RESPONSE;
 const bidTimeoutConst = CONSTANTS.EVENTS.BID_TIMEOUT;
+const SLOT_LOADED = "slotOnload"
+
+let googletag = window.googletag || {};
+googletag.cmd = googletag.cmd || [];
 
 let initOptions = {
   publisherPlatformId: '',
   publisherAccountId: -1,
   testCode: 'default',
   utmTagData: [],
-  adUnits: []
+  adUnits: [],
+  slotLoadWaitTime: 0
 };
 let eventStack = {};
+let loadedAdSlots = {};
 
 let localStoragePrefix = 'openx_analytics_';
 let utmTags = [
@@ -237,6 +244,106 @@ function removeads(info) {
   }
 }
 
+function getAuctionIdByAdId(adId) {
+
+  let auctionId;
+  utils._map(eventStack, value => value).forEach( function(auctionInfo) {
+    if(auctionInfo && auctionInfo.events){
+      let bidWonEvent;
+      bidWonEvent = auctionInfo.events.filter(function(eventsInfo) {
+        return eventsInfo.eventType === "bidWon";
+      });
+
+      if(bidWonEvent.length > 0) {
+        bidWonEvent.forEach(function(bidWon) {
+          if(bidWon.args && bidWon.args.adId && bidWon.args.adId === adId) {
+            auctionId = bidWon.args.auctionId;
+          }
+        }); 
+      }
+    }
+  });
+  return auctionId;
+}
+
+function getAllAdUnitCodesByAuctionId(auctionId) {
+
+  let adUnitCodes;
+  if(eventStack[auctionId] && eventStack[auctionId].events) {
+
+    eventStack[auctionId].events.forEach(function(eventsInfo) {
+      if(eventsInfo.eventType === "auctionEnd") {
+        adUnitCodes = eventsInfo.args.adUnitCodes;
+      }
+    })
+  }
+  return adUnitCodes;
+}
+
+function getAuctionIdByAdUnitCode(adUnitCode) {
+  let auctionId;
+  utils._map(eventStack, value => value).forEach( function(auctionInfo) {
+    if(auctionId === undefined) {
+      if(auctionInfo && auctionInfo.events) {
+        auctionInfo.events.forEach(function(eventsInfo){
+          if(eventsInfo.eventType === auctionEndConst) {
+            if(eventsInfo.args && eventsInfo.args.adUnitCodes) {
+              if(eventsInfo.args.adUnitCodes.includes(adUnitCode)){
+                auctionId = eventsInfo.args.auctionId;
+              }
+            }
+          }
+        })
+      }
+    }
+  });
+  return auctionId;
+}
+
+function onSlotLoaded({ slot }) {
+
+  const adId = slot.getTargeting('hb_adid')[0];
+  const slotElementId = slot.getSlotElementId();
+  const adUnitPath = slot.getAdUnitPath();
+
+  let auctionId = getAuctionIdByAdId(adId);
+  if(!auctionId) {
+    auctionId = getAuctionIdByAdUnitCode(slotElementId);
+    if(!auctionId) {
+      auctionId = getAuctionIdByAdUnitCode(adUnitPath);
+    }
+  }
+
+  let allSlotsLoaded = false;
+  if(auctionId) {
+    if(!loadedAdSlots[auctionId]) {
+      loadedAdSlots[auctionId] = []
+    }
+    loadedAdSlots[auctionId].push(slotElementId);
+    let allAdUnitCodes = getAllAdUnitCodesByAuctionId(auctionId);
+    if(loadedAdSlots[auctionId].length === allAdUnitCodes.length) {
+      allSlotsLoaded = true;
+    }
+  }
+
+  if(auctionId && eventStack[auctionId] && allSlotsLoaded) {
+    setTimeout(function(){
+      if(eventStack[auctionId]) {
+        send(SLOT_LOADED, eventStack, auctionId);
+        eventStack[auctionId] = null;
+      }
+      delete loadedAdSlots[auctionId];
+    }, initOptions.slotLoadWaitTime);
+  }
+}
+
+googletag.cmd.push(function() {
+  googletag.pubads().addEventListener(SLOT_LOADED, function(args) {
+    utils.logInfo("OX: SlotOnLoad event triggered");
+    onSlotLoaded(args);
+  });
+});
+
 let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }), {
   track({ eventType, args }) {
 
@@ -263,31 +370,34 @@ let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }), {
       pushEvent(eventType, info, auctionId);
       // utils.logInfo('OX: Bid won called for', auctionId);
     } else if (eventType === auctionEndConst) {
-      pushEvent(eventType, removeads(info), auctionId);
-      // utils.logInfo('OX: Auction end called for', auctionId);
-      updateSessionId();
-      buildEventStack(auctionId);
-      if (isValidEventStack(auctionId)) {
-        setTimeout(function() {
-          // utils.logInfo('OX: Sending data', eventStack);
-          send(
-            eventType,
-            eventStack,
-            auctionId
-          );
-          eventStack[auctionId] = null;
-          // utils.logInfo('OX: Deleted Auction Info for auctionId', auctionId);
-        }, AUCTION_END_WAIT_TIME);
-      } else {
-        setTimeout(function() {
-          eventStack[auctionId] = null;
-          // utils.logInfo('OX: Deleted Auction Info for auctionId', auctionId);
-        }, AUCTION_END_WAIT_TIME);
-      }
+        pushEvent(eventType, removeads(info), auctionId);
+        // utils.logInfo('OX: Auction end called for', auctionId);
+        updateSessionId();
+        buildEventStack(auctionId);
+        if (isValidEventStack(auctionId)) {
+          setTimeout(function() {
+            // utils.logInfo('OX: Sending data', eventStack);
+            if(eventStack[auctionId]) {
+              send(
+                eventType,
+                eventStack,
+                auctionId
+              );
+              eventStack[auctionId] = null;
+            }
+            delete loadedAdSlots[auctionId];
+            // utils.logInfo('OX: Deleted Auction Info for auctionId', auctionId);
+          }, AUCTION_END_WAIT_TIME);
+        } else {
+          setTimeout(function() {
+            eventStack[auctionId] = null;
+            // utils.logInfo('OX: Deleted Auction Info for auctionId', auctionId);
+          }, AUCTION_END_WAIT_TIME);
+        }
     } else if (eventType === bidTimeoutConst) {
       // utils.logInfo('SA: Bid Timedout for', auctionId);
       pushEvent(eventType, info, auctionId);
-    }
+    } 
   }
 });
 
@@ -297,6 +407,10 @@ openxAdapter.enableAnalytics = function(config) {
   initOptions = config.options;
   initOptions.testCode = getTestCode();
   initOptions.utmTagData = this.buildUtmTagData();
+  
+  if(!initOptions.slotLoadWaitTime) {
+    initOptions.slotLoadWaitTime = DEFAULT_SLOT_LOAD_BUFFER_TIME
+  }
   utils.logInfo('OpenX Analytics enabled with config', initOptions);
 
   // set default sampling rate to 5%
