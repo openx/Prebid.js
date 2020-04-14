@@ -26,7 +26,7 @@ const bidRequestConst = CONSTANTS.EVENTS.BID_REQUESTED;
 const bidAdjustmentConst = CONSTANTS.EVENTS.BID_ADJUSTMENT;
 const bidResponseConst = CONSTANTS.EVENTS.BID_RESPONSE;
 const bidTimeoutConst = CONSTANTS.EVENTS.BID_TIMEOUT;
-const SLOT_LOADED = "slotOnload"
+const SLOT_LOADED = 'slotOnload'
 
 let googletag = window.googletag || {};
 googletag.cmd = googletag.cmd || [];
@@ -250,7 +250,7 @@ function getAuctionIdByAdId(adId) {
     if (auctionInfo && auctionInfo.events) {
       let bidWonEvent;
       bidWonEvent = auctionInfo.events.filter(function(eventsInfo) {
-        return eventsInfo.eventType === "bidWon";
+        return eventsInfo.eventType === 'bidWon';
       });
 
       if (bidWonEvent.length > 0) {
@@ -269,7 +269,7 @@ function getAllAdUnitCodesByAuctionId(auctionId) {
   let adUnitCodes;
   if (eventStack[auctionId] && eventStack[auctionId].events) {
     eventStack[auctionId].events.forEach(function(eventsInfo) {
-      if(eventsInfo.eventType === "auctionEnd") {
+      if (eventsInfo.eventType === 'auctionEnd') {
         adUnitCodes = eventsInfo.args.adUnitCodes;
       }
     })
@@ -335,7 +335,7 @@ function onSlotLoaded({ slot }) {
 
 googletag.cmd.push(function() {
   googletag.pubads().addEventListener(SLOT_LOADED, function(args) {
-    utils.logInfo("OX: SlotOnLoad event triggered");
+    utils.logInfo('OX: SlotOnLoad event triggered');
     onSlotLoaded(args);
   });
 });
@@ -628,11 +628,13 @@ openxAdapter.reset = function() {
 };
 
 openxAdapter.slotOnLoad = onSlotLoaded;
-openxAdapter.AUCTION_END_WAIT_TIME = AUCTION_END_WAIT_TIME;
 
 adapterManager.registerAnalyticsAdapter({
   adapter: openxAdapter,
   code: 'openx'
 });
 
-export default openxAdapter;
+export default Object.assign({
+  adapter: openxAdapter,
+  auctionEndWaitTime: AUCTION_END_WAIT_TIME
+});
