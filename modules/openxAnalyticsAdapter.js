@@ -667,6 +667,7 @@ adapterManager.registerAnalyticsAdapter({
   code: 'openx'
 });
 
+//* *******  V2 Code  *******
 const {
   EVENTS: { AUCTION_INIT, BID_REQUESTED, BID_RESPONSE, BID_TIMEOUT, BID_WON }
 } = CONSTANTS;
