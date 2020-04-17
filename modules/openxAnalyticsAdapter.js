@@ -245,24 +245,23 @@ function removeads(info) {
 }
 
 function getAuctionIdByAdId(adId) {
-  let auctionId;
-  utils._map(eventStack, value => value).forEach(function(auctionInfo) {
+  let auctionId, adUnitCode;
+  utils._each(eventStack, function(auctionInfo) {
     if (auctionInfo && auctionInfo.events) {
-      let bidWonEvent;
-      bidWonEvent = auctionInfo.events.filter(function(eventsInfo) {
-        return eventsInfo.eventType === 'bidWon';
-      });
-
-      if (bidWonEvent.length > 0) {
-        bidWonEvent.forEach(function(bidWon) {
-          if (bidWon.args && bidWon.args.adId && bidWon.args.adId === adId) {
-            auctionId = bidWon.args.auctionId;
+      auctionInfo.events.forEach(function(eventsInfo) {
+        if(eventsInfo.eventType === bidWonConst) {
+          if (eventsInfo.args && eventsInfo.args.adId && eventsInfo.args.adId === adId) {
+            auctionId = eventsInfo.args.auctionId;
+            adUnitCode = eventsInfo.args.adUnitCode;
           }
-        });
-      }
+        }
+      });
     }
   });
-  return auctionId;
+  return {
+    auctionId: auctionId,
+    adUnitCode: adUnitCode
+  };
 }
 
 function getAllAdUnitCodesByAuctionId(auctionId) {
@@ -302,22 +301,31 @@ function onSlotLoaded({ slot }) {
   const slotElementId = slot.getSlotElementId();
   const adUnitPath = slot.getAdUnitPath();
 
-  let auctionId = getAuctionIdByAdId(adId);
-  if (!auctionId) {
-    auctionId = getAuctionIdByAdUnitCode(slotElementId);
+  // AdId will be present in `eventStack` only if winner is through prebid auction.
+  // Assuming either `adUnitPath` or `slotElementId` to be adUnitCode because there is no other way -
+  // to know for which ad unit the slot is rendered
+
+  let auctionId, adUnitCode;
+  let adUnitInfo = getAuctionIdByAdId(adId);
+  if(adUnitInfo && adUnitInfo.auctionId && adUnitInfo.adUnitCode) {
+    auctionId = adUnitInfo.auctionId;
+    adUnitCode = adUnitInfo.adUnitCode;
+  } else {
+    adUnitCode = slotElementId;
+    auctionId = getAuctionIdByAdUnitCode(adUnitCode);
     if (!auctionId) {
+      adUnitCode = adUnitPath;
       auctionId = getAuctionIdByAdUnitCode(adUnitPath);
     }
   }
 
   let allSlotsLoaded = false;
   if (auctionId) {
-    if (!loadedAdSlots[auctionId]) {
-      loadedAdSlots[auctionId] = []
-    }
-    loadedAdSlots[auctionId].push(slotElementId);
+    let adPosition = getAdPositionByElementId(slotElementId);
+    updateLoadedAdSlotsInfo(auctionId, adUnitCode, adPosition);
+    let loadedAdUnitCodes = getLoadedAdUnitCodes(auctionId);
     let allAdUnitCodes = getAllAdUnitCodesByAuctionId(auctionId);
-    if (loadedAdSlots[auctionId].length === allAdUnitCodes.length) {
+    if (loadedAdUnitCodes.length === allAdUnitCodes.length) {
       allSlotsLoaded = true;
     }
   }
@@ -568,6 +576,7 @@ function send(eventType, eventStack, auctionId) {
   var sourceBrowser = detectBrowser();
   var sourceOs = detectOS();
   // utils.logInfo('OX: AuctionId', auctionId);
+  pushAdPositionData(auctionId);
   var data = eventStack[auctionId];
   var publisherPlatformId = eventStack[auctionId].options.publisherPlatformId;
   var publisherAccountId = eventStack[auctionId].options.publisherAccountId;
@@ -620,6 +629,80 @@ function pushEvent(eventType, args, auctionId) {
       eventStack[auctionId].events.push({ eventType: eventType, args: args });
     }
   }
+}
+
+function updateLoadedAdSlotsInfo(auctionId, adUnitCode, adPosition) {
+
+  if(auctionId && adUnitCode) {
+    if(!loadedAdSlots[auctionId]){
+      loadedAdSlots[auctionId] = {};
+    }
+    loadedAdSlots[auctionId][adUnitCode] = {};
+    if(adPosition) {
+      loadedAdSlots[auctionId][adUnitCode] = { adPosition: adPosition };
+    }
+  } else {
+    utils.logWarn("OX: Couldn't update loadedAdSlots information.");
+  }
+}
+
+function getLoadedAdUnitCodes(auctionId) {
+
+  return (!auctionId || !loadedAdSlots[auctionId] || typeof loadedAdSlots[auctionId] !== 'object')
+    ? [] : Object.keys(loadedAdSlots[auctionId]);
+}
+
+function pushAdPositionData(auctionId) {
+
+  if(auctionId && eventStack[auctionId] && eventStack[auctionId].events) {
+
+    let adUnitPositionMap = loadedAdSlots[auctionId];
+    if(adUnitPositionMap && JSON.stringify(adUnitPositionMap) !== "{}") {
+
+      eventStack[auctionId].events.filter(function(event) {
+        return event.eventType === auctionEndConst;
+      }).forEach(function (auctionEndEvent) {
+
+        if(auctionEndEvent.args && auctionEndEvent.args.adUnits) {
+          auctionEndEvent.args.adUnits.forEach(function (adUnitInfo) {
+            if(adUnitPositionMap[adUnitInfo.code] && adUnitPositionMap[adUnitInfo.code]["adPosition"]) {
+              adUnitInfo["adPosition"] = adUnitPositionMap[adUnitInfo.code]["adPosition"];
+            } else {
+              adUnitInfo["adPosition"] = "";
+            }
+          })
+        }
+      });
+    }
+  }
+}
+
+function getAdPositionByElementId(elementId) {
+
+  let elem = document.querySelector("#" + elementId);
+  let adPosition;
+  if (elem) {
+    let bounding = elem.getBoundingClientRect();
+    if (bounding) {
+      let windowWidth = (window.innerWidth || document.documentElement.clientWidth);
+      let windowHeight = (window.innerHeight || document.documentElement.clientHeight);
+
+      // intersection coordinates
+      let left = Math.max(0, bounding.left);
+      let right = Math.min(windowWidth, bounding.right);
+      let bottom = Math.min(windowHeight, bounding.bottom);
+      let top = Math.max(0, bounding.top);
+
+      let intersectionArea = (right - left) * (bottom - top);
+      let adSlotArea = (bounding.right - bounding.left) * (bounding.bottom - bounding.top);
+
+      // Atleast 50% of intersection in window
+      adPosition = (intersectionArea * 2 >= adSlotArea) ? "ATF" : "BTF";
+    }
+  } else {
+    utils.logWarn("OX: DOM element not for id " + elementId);
+  }
+  return adPosition;
 }
 
 openxAdapter.reset = function() {
