@@ -3,6 +3,9 @@ import adapter from '../src/AnalyticsAdapter.js';
 import CONSTANTS from '../src/constants.json';
 import adapterManager from '../src/adapterManager.js';
 
+//* *******  V2 Code
+import { ajax } from '../src/ajax.js';
+
 // temp dependency on zlib to minimize payload
 const zlib = require('zlib');  // eslint-disable-line
 
@@ -26,19 +29,43 @@ const bidRequestConst = CONSTANTS.EVENTS.BID_REQUESTED;
 const bidAdjustmentConst = CONSTANTS.EVENTS.BID_ADJUSTMENT;
 const bidResponseConst = CONSTANTS.EVENTS.BID_RESPONSE;
 const bidTimeoutConst = CONSTANTS.EVENTS.BID_TIMEOUT;
-const SLOT_LOADED = 'slotOnload'
+const SLOT_LOADED = 'slotOnload';
+
+/**
+ * @typedef {Object} AnalyticsConfig
+ * @property {string} publisherPlatformId
+ * @property {number} publisherAccountId
+ * @property {number} sampling
+ * @property {boolean} testPipeline
+ * @property {number} slotLoadWaitTime
+ * @property {Object} utmTagData
+ * @property {string} adIdKey
+ * @property {number} payloadSendDelayTime
+ * @property {Array<string>}adUnits
+ */
+
+/**
+ * @type {AnalyticsConfig}
+ */
+const DEFAULT_ANALYTICS_CONFIG = {
+  publisherPlatformId: void (0),
+  publisherAccountId: void (0),
+  sampling: 0.05, // default sampling rate of 5%
+  testPipeline: false,
+  adIdKey: 'hb_adid',
+  utmTagData: {},
+  adUnits: [],
+  slotLoadWaitTime: DEFAULT_SLOT_LOAD_BUFFER_TIME,
+  payloadSendDelayTime: AUCTION_END_WAIT_TIME,
+};
 
 let googletag = window.googletag || {};
 googletag.cmd = googletag.cmd || [];
 
-let initOptions = {
-  publisherPlatformId: '',
-  publisherAccountId: -1,
-  testCode: 'default',
-  utmTagData: [],
-  adUnits: [],
-  slotLoadWaitTime: 0
-};
+/**
+ * @type {AnalyticsConfig}
+ */
+let analyticsConfig;
 let eventStack = {};
 let loadedAdSlots = {};
 
@@ -80,7 +107,7 @@ function updateSessionId() {
     let newSessionId = utils.generateUUID();
     localStorage.setItem(buildSessionIdLocalStorageKey(), newSessionId);
   }
-  initOptions.sessionId = getSessionId();
+  analyticsConfig.sessionId = getSessionId();
   updateSessionIdTimeout();
 }
 
@@ -119,10 +146,10 @@ function buildUtmLocalStorageKey(utmMarkKey) {
 }
 
 function getPublisherPlatformId() {
-  if (initOptions.publisherPlatformId !== undefined) {
-    if (typeof initOptions.publisherPlatformId === 'string') {
-      if (initOptions.publisherPlatformId !== '') {
-        return initOptions.publisherPlatformId;
+  if (analyticsConfig.publisherPlatformId !== undefined) {
+    if (typeof analyticsConfig.publisherPlatformId === 'string') {
+      if (analyticsConfig.publisherPlatformId !== '') {
+        return analyticsConfig.publisherPlatformId;
       } else {
         utils.logError('OX: Invalid PublisherPlatformId');
         return null;
@@ -138,10 +165,10 @@ function getPublisherPlatformId() {
 }
 
 function getPublisherAccountId() {
-  if (initOptions.publisherAccountId !== undefined) {
-    if (typeof initOptions.publisherAccountId === 'number') {
-      if (initOptions.publisherAccountId > -1) {
-        return initOptions.publisherAccountId;
+  if (analyticsConfig.publisherAccountId !== undefined) {
+    if (typeof analyticsConfig.publisherAccountId === 'number') {
+      if (analyticsConfig.publisherAccountId > -1) {
+        return analyticsConfig.publisherAccountId;
       } else {
         utils.logError('OX: Invalid PublisherAccountId');
         return null;
@@ -157,9 +184,9 @@ function getPublisherAccountId() {
 }
 
 function getTestCode() {
-  if (initOptions.testCode !== undefined) {
-    if (typeof initOptions.testCode === 'string') {
-      return initOptions.testCode;
+  if (analyticsConfig.testCode !== undefined) {
+    if (typeof analyticsConfig.testCode === 'string') {
+      return analyticsConfig.testCode;
     } else {
       utils.logError('OX: Invalid datatype for testCode');
       return null;
@@ -181,21 +208,21 @@ function checkInitOptions() {
 }
 
 function checkAdUnitConfig() {
-  if (typeof initOptions.adUnits === 'undefined') {
+  if (typeof analyticsConfig.adUnits === 'undefined') {
     return false;
   }
-  return initOptions.adUnits.length > 0;
+  return analyticsConfig.adUnits.length > 0;
 }
 
 function buildEventStack(auctionId) {
-  eventStack[auctionId].options = initOptions;
+  eventStack[auctionId].options = analyticsConfig;
   utils.logInfo('OX: Options Initialized', eventStack);
 }
 
 function filterBidsByAdUnit(bids) {
   var filteredBids = [];
   bids.forEach(function(bid) {
-    if (includes(initOptions.adUnits, bid.placementCode)) {
+    if (includes(analyticsConfig.adUnits, bid.placementCode)) {
       filteredBids.push(bid);
     }
   });
@@ -206,7 +233,7 @@ function isValidEvent(eventType, adUnitCode) {
   if (checkAdUnitConfig()) {
     let validationEvents = [bidAdjustmentConst, bidResponseConst, bidWonConst, bidTimeoutConst];
     if (
-      !includes(initOptions.adUnits, adUnitCode) &&
+      !includes(analyticsConfig.adUnits, adUnitCode) &&
       includes(validationEvents, eventType)
     ) {
       return false;
@@ -337,16 +364,9 @@ function onSlotLoaded({ slot }) {
         eventStack[auctionId] = null;
       }
       delete loadedAdSlots[auctionId];
-    }, initOptions.slotLoadWaitTime);
+    }, analyticsConfig.slotLoadWaitTime);
   }
 }
-
-googletag.cmd.push(function() {
-  googletag.pubads().addEventListener(SLOT_LOADED, function(args) {
-    utils.logInfo('OX: SlotOnLoad event triggered');
-    onSlotLoaded(args);
-  });
-});
 
 let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }), {
   track({ eventType, args }) {
@@ -390,12 +410,12 @@ let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }), {
           }
           delete loadedAdSlots[auctionId];
           // utils.logInfo('OX: Deleted Auction Info for auctionId', auctionId);
-        }, AUCTION_END_WAIT_TIME);
+        }, analyticsConfig.payloadSendDelayTime);
       } else {
         setTimeout(function() {
           eventStack[auctionId] = null;
           // utils.logInfo('OX: Deleted Auction Info for auctionId', auctionId);
-        }, AUCTION_END_WAIT_TIME);
+        }, analyticsConfig.payloadSendDelayTime);
       }
     } else if (eventType === bidTimeoutConst) {
       // utils.logInfo('SA: Bid Timedout for', auctionId);
@@ -406,19 +426,32 @@ let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }), {
 
 openxAdapter.originEnableAnalytics = openxAdapter.enableAnalytics;
 
-openxAdapter.enableAnalytics = function(config) {
-  initOptions = config.options;
-  initOptions.testCode = getTestCode();
-  initOptions.utmTagData = this.buildUtmTagData();
+openxAdapter.enableAnalytics = function(adapterConfig) {
+  analyticsConfig = {...DEFAULT_ANALYTICS_CONFIG, ...adapterConfig.options};
+  analyticsConfig.testCode = getTestCode();
+  analyticsConfig.utmTagData = this.buildUtmTagData();
+  utils.logInfo('OpenX Analytics enabled with config', analyticsConfig);
 
-  if (!initOptions.slotLoadWaitTime) {
-    initOptions.slotLoadWaitTime = DEFAULT_SLOT_LOAD_BUFFER_TIME
+  if (analyticsConfig.testPipeline) {
+    // override track method with v2 handlers
+    openxAdapter.track = prebidAnalyticsEventHandler;
+
+    googletag.cmd.push(function() {
+      googletag.pubads().addEventListener(SLOT_LOADED, args => {
+        openxAdapter.track({ eventType: SLOT_LOADED, args });
+        utils.logInfo('OX: SlotOnLoad event triggered');
+      });
+    });
+  } else {
+    googletag.cmd.push(function() {
+      googletag.pubads().addEventListener(SLOT_LOADED, function(args) {
+        utils.logInfo('OX: SlotOnLoad event triggered');
+        onSlotLoaded(args);
+      });
+    });
   }
-  utils.logInfo('OpenX Analytics enabled with config', initOptions);
 
-  // set default sampling rate to 5%
-  config.options.sampling = config.options.sampling || 0.05;
-  openxAdapter.originEnableAnalytics(config);
+  openxAdapter.originEnableAnalytics(adapterConfig);
 };
 
 openxAdapter.buildUtmTagData = function() {
@@ -717,7 +750,406 @@ adapterManager.registerAnalyticsAdapter({
   code: 'openx'
 });
 
+//* *******  V2 Code  *******
+const {
+  EVENTS: { AUCTION_INIT, BID_REQUESTED, BID_RESPONSE, BID_TIMEOUT, BID_WON }
+} = CONSTANTS;
+
+const ENDPOINT = 'https://prebid.openx.net/ox/analytics';
+let auctionMap = {};
+let auctionOrder = 1; // tracks the number of auctions ran on the page
+
+function prebidAnalyticsEventHandler({eventType, args}) {
+  utils.logMessage(eventType, Object.assign({}, args));
+  switch (eventType) {
+    case AUCTION_INIT:
+      onAuctionInit(args);
+      break;
+    case BID_REQUESTED:
+      onBidRequested(args);
+      break;
+    case BID_RESPONSE:
+      onBidResponse(args);
+      break;
+    case BID_TIMEOUT:
+      onBidTimeout(args);
+      break;
+    case BID_WON:
+      onBidWon(args);
+      break;
+    case SLOT_LOADED:
+      onSlotLoadedV2(args);
+      break;
+  }
+}
+
+/*
+TODO: type Auction
+auctionId: "526ce090-e42e-4444-996f-ea78cde2244d"
+timestamp: 1586675964364
+auctionEnd: undefined
+auctionStatus: "inProgress"
+adUnits: [{…}]
+adUnitCodes: ["video1"]
+labels: undefined
+bidderRequests: (2) [{…}, {…}]
+noBids: []
+bidsReceived: []
+winningBids: []
+timeout: 3000
+config: {publisherPlatformId: "a3aece0c-9e80-4316-8deb-faf804779bd1", publisherAccountId: 537143056, sampling: 1, testPipeline: true}
+ */
+function onAuctionInit({auctionId, timestamp: startTime, timeout, adUnitCodes}) {
+  auctionMap[auctionId] = {
+    id: auctionId,
+    startTime,
+    timeout,
+    auctionOrder,
+    adUnitCodesCount: adUnitCodes.length,
+    adunitCodesRenderedCount: 0,
+    auctionCompleted: false,
+    auctionSendDelayTimer: void (0),
+  };
+
+  // setup adunit properties in map
+  auctionMap[auctionId].adUnitCodeToBidderRequestMap = adUnitCodes.reduce((obj, adunitCode) => {
+    obj[adunitCode] = {};
+    return obj;
+  }, {});
+
+  auctionOrder++;
+}
+
+// TODO: type BidRequest
+function onBidRequested(bidRequest) {
+  const {auctionId, auctionStart, refererInfo, bids: bidderRequests, start} = bidRequest;
+  const auction = auctionMap[auctionId];
+  const adUnitCodeToBidderRequestMap = auction.adUnitCodeToBidderRequestMap;
+
+  bidderRequests.forEach(bidderRequest => {
+    const { adUnitCode, bidder, bidId: requestId, mediaTypes, params, src } = bidderRequest;
+
+    adUnitCodeToBidderRequestMap[adUnitCode][requestId] = {
+      bidder,
+      params,
+      mediaTypes,
+      source: src,
+      startTime: start,
+      timedOut: false,
+      bids: {}
+    };
+  });
+}
+
+/**
+ *
+ * @param {BidResponse} bidResponse
+ */
+function onBidResponse(bidResponse) {
+  let {
+    auctionId,
+    adUnitCode,
+    requestId,
+    cpm,
+    creativeId,
+    requestTimestamp,
+    responseTimestamp,
+    ts,
+    mediaType,
+    dealId,
+    ttl,
+    netRevenue,
+    currency,
+    originalCpm,
+    originalCurrency,
+    width,
+    height,
+    timeToRespond: latency,
+    adId,
+    meta
+  } = bidResponse;
+
+  auctionMap[auctionId].adUnitCodeToBidderRequestMap[adUnitCode][requestId].bids[adId] = {
+    cpm,
+    creativeId,
+    requestTimestamp,
+    responseTimestamp,
+    ts,
+    adId,
+    meta,
+    mediaType,
+    dealId,
+    ttl,
+    netRevenue,
+    currency,
+    originalCpm,
+    originalCurrency,
+    width,
+    height,
+    latency,
+    winner: false,
+    rendered: false,
+    renderTime: 0,
+  };
+}
+
+function onBidTimeout(args) {
+  utils
+    ._map(args, value => value)
+    .forEach(({ auctionId, adUnitCode, bidId: requestId }) => {
+      auctionMap[auctionId].adUnitCodeToBidderRequestMap[adUnitCode][requestId].timedOut = true;
+    });
+}
+
+/**
+ *
+ * @param {BidResponse} bidResponse
+ */
+function onBidWon(bidResponse) {
+  const { auctionId, adUnitCode, requestId, adId } = bidResponse;
+  auctionMap[auctionId].adUnitCodeToBidderRequestMap[adUnitCode][requestId].bids[adId].winner = true;
+}
+
+/**
+ *
+ * @param {GoogleTagSlot} slot
+ * @param {string} serviceName
+ */
+function onSlotLoadedV2({ slot }) {
+  const renderTime = Date.now();
+  const auction = getAuctionByGoogleTagSLot(slot);
+
+  if (!auction) {
+    return; // slot is not participating in a prebid auction
+  }
+
+  // reset the delay timer to send the auction data
+  if (auction.auctionSendDelayTimer) {
+    clearTimeout(auction.auctionSendDelayTimer);
+    auction.auctionSendDelayTimer = void (0);
+  }
+
+  // track that an adunit code has completed within an auction
+  auction.adunitCodesRenderedCount++;
+
+  // mark adunit as rendered
+  const adId = slot.getTargeting('hb_adid')[0];
+  const adUnit = getAdUnitByAuctionAndAdId(auction, adId);
+
+  if (adUnit) {
+    adUnit.rendered = true;
+    adUnit.renderTime = renderTime;
+  }
+
+  // prepare to send regardless if auction is complete or not as a failsafe in case not all events are tracked
+  // add additional padding when not all slots are rendered
+  const delayTime = auction.adunitCodesRenderedCount === auction.adUnitCodesCount
+    ? analyticsConfig.slotLoadWaitTime
+    : analyticsConfig.slotLoadWaitTime + 500;
+
+  auction.auctionSendDelayTimer = setTimeout(() => {
+    let payload = JSON.stringify([buildAuctionPayload(auction)]);
+    ajax(ENDPOINT, deleteAuctionMap, payload, { contentType: 'application/json' });
+
+    function deleteAuctionMap() {
+      delete auctionMap[auction.id];
+    }
+  }, delayTime);
+
+  auction.auctionCompleted = true;
+}
+
+function getAuctionByGoogleTagSLot(slot) {
+  let slotAdunitCodes = [slot.getSlotElementId(), slot.getAdUnitPath()];
+  let slotAuction;
+
+  utils._each(auctionMap, auction => {
+    utils._each(auction.adUnitCodeToBidderRequestMap, (bidderRequestIdMap, adUnitCode) => {
+      if (slotAdunitCodes.includes(adUnitCode)) {
+        slotAuction = auction;
+      }
+    });
+  });
+
+  return slotAuction;
+}
+
+function buildAuctionPayload(auction) {
+  let {startTime, timeout, auctionOrder, adUnitCodeToBidderRequestMap} = auction;
+
+  return {
+    publisherPlatformId: analyticsConfig.publisherPlatformId,
+    publisherAccountId: analyticsConfig.publisherAccountId,
+    startTime,
+    timeLimit: timeout,
+    auctionOrder,
+    deviceType: detectMob() ? 'Mobile' : 'Desktop',
+    deviceOSType: detectOS(),
+    browser: detectBrowser(),
+    testCode: analyticsConfig.testCode,
+    bidRequests: buildBidRequestsPayload(adUnitCodeToBidderRequestMap),
+  };
+
+  function buildBidRequestsPayload(adUnitCodeToBidderRequestMap) {
+    return utils._map(adUnitCodeToBidderRequestMap, (bidderRequestMap, adUnitCode) => {
+      return utils._map(bidderRequestMap, (bidderRequest) => {
+        let {bidder, source, bids, mediaTypes, timedOut} = bidderRequest;
+        return {
+          adUnitCode,
+          bidder,
+          source,
+          hasBidderResponded: Object.keys(bids).length > 0,
+          availableAdSizes: getMediaTypeSizes(mediaTypes),
+          availableMediaTypes: getMediaTypes(mediaTypes),
+          timedOut,
+          bidResponses: utils._map(bidderRequest.bids, (bidderBidResponse) => {
+            let {
+              cpm,
+              creativeId,
+              responseTimestamp,
+              ts,
+              adId,
+              meta,
+              mediaType,
+              dealId,
+              ttl,
+              netRevenue,
+              currency,
+              originalCpm,
+              originalCurrency,
+              width,
+              height,
+              latency,
+              winner,
+              rendered,
+              renderTime,
+            } = bidderBidResponse;
+
+            return {
+              microCPM: cpm * 1000,
+              netRevenue,
+              currency,
+              mediaType,
+              height,
+              width,
+              size: `${width}x${height}`,
+              dealId,
+              latency,
+              ttl,
+              winner,
+              creativeId,
+              ts,
+              rendered,
+              renderTime,
+              meta,
+            }
+          })
+        }
+      })
+    }).flat();
+  }
+
+  function getMediaTypeSizes(mediaTypes) {
+    return utils._map(mediaTypes, (mediaTypeConfig, mediaType) => {
+      return utils.parseSizesInput(mediaTypeConfig.sizes)
+        .map(size => `${mediaType}_${size}`);
+    }).flat();
+  }
+
+  function getMediaTypes(mediaTypes) {
+    return utils._map(mediaTypes, (mediaTypeConfig, mediaType) => mediaType);
+  }
+}
+
+function getAdUnitByAuctionAndAdId(auction, adId) {
+  let adunit;
+
+  utils._each(auction.adUnitCodeToBidderRequestMap, (bidderRequestIdMap) => {
+    utils._each(bidderRequestIdMap, bidderRequest => {
+      utils._each(bidderRequest.bids, (bid, bidId) => {
+        if (bidId === adId) {
+          adunit = bid;
+        }
+      });
+    });
+  });
+
+  return adunit;
+}
+
 export default Object.assign({
   adapter: openxAdapter,
   auctionEndWaitTime: AUCTION_END_WAIT_TIME
 });
+
+/**
+ * Test Helper Functions
+ */
+
+// reset the cache for unit tests
+openxAdapter.reset = function() {
+  auctionMap = {};
+  auctionOrder = 1;
+};
+
+/**
+ *  Type Definitions
+ */
+
+/**
+ * @typedef {Object} BidResponse
+ * @property {string} auctionId - Auction ID of the request this bid responded to
+ * @property {string} bidderCode - The bidder code. Used by ad server’s line items to identify bidders
+ * @property {string} adId - The unique identifier of a bid creative. It’s used by the line item’s creative as in this example.
+ * @property {number} width - The width of the returned creative size.
+ * @property {number} height - The height of the returned creative size.
+ * @property {string} size - The width x height of the returned creative size.
+ * @property {number} originalCpm - The original bid price from the bidder prior to bid adjustments
+ * @property {number} cpm - The exact bid price from the bidder
+ * @property {string} originalCurrency - Original currency of the bid prior to bid adjustments
+ * @property {string} currency - 3-letter ISO 4217 code defining the currency of the bid.
+ * @property {Boolean} netRevenue - True if bid is Net, False if Gross
+ * @property {number} requestTimestamp - The time stamp when the bid request is sent out in milliseconds
+ * @property {number} responseTimestamp - The time stamp when the bid response is received in milliseconds
+ * @property {number} timeToRespond - The amount of time for the bidder to respond with the bid
+ * @property {string} adUnitCode - adUnitCode to get the bid responses for
+ * @property {number} creativeId - Bidder-specific creative ID
+ * @property {string} mediaType - One of: banner, native, video	banner
+ * @property {string} [dealId] - (Optional) If the bid is associated with a Deal, this field contains the deal ID.
+ * @property {Object} adserverTargeting - Contains all the adserver targeting parameters
+ * @property {string} [ad] - Contains the ad payload for banner ads.
+ * @property {string} [vastUrl] - URL where the VAST document can be retrieved when ready for display.
+ * @property {string} [vastImpUrl] - Optional; only usable with vastUrl and requires prebid cache to be enabled.
+ *                                   An impression tracking URL to serve with video Ad
+ * @property {string} [vastXml] - XML for VAST document to be cached for later retrieval.
+ * @property {Object} [native] - Contains native key value pairs.
+ * @property {string} status - Status of the bid. Possible values: targetingSet, rendered	"targetingSet"
+ * @property {string} statusMessage - The bid’s status message	“Bid returned empty or error response” or “Bid available”
+ * @property {number} ttl - How long (in seconds) this bid is considered valid. See this FAQ entry for more info.	300
+ * @property {string} requestId - Used to tie this bid back to the request
+ * @property {string} mediaType - Specifies the type of media type. One of: banner, video, native
+ * @property {string} source - Whether this bid response came from a client-side or server side request.  One of: client, server.
+ * @property {string} pbLg - CPM quantized to a granularity: Low (pbLg)
+ * @property {string} pbMg - CPM quantized to a granularity: Medium (pbMg)
+ * @property {string} pbHg - CPM quantized to a granularity: High (pbHg)
+ * @property {string} pbAg - CPM quantized to a granularity: Auto (pbAg)
+ * @property {string} pbDg - CPM quantized to a granularity: Dense (pbDg)
+ * @property {BidResponseMeta} [meta] - Object containing metadata about the bid
+ * }}
+ */
+
+/**
+ * @typedef {Object} BidResponseMeta
+ * @property {number} [networkId] Bidder-specific Network/DSP Id
+ * @property {string} [networkName] - Network/DSP Name. example:	"NetworkN"
+ * @property {number} [agencyId] - Bidder-specific Agency ID. example:	2222
+ * @property {string} [agencyName] - Agency Name. example:	"Agency, Inc."
+ * @property {number} [advertiserId] - Bidder-specific Advertiser ID. example:	3333
+ * @property {string} [advertiserName] - Advertiser Name. example:	"AdvertiserA"
+ * @property {Array<string>} [advertiserDomains] - Array of Advertiser Domains for the landing page(s). This is an array
+ *                                             to align with the OpenRTB ‘adomain’ field.. example:	["advertisera.com"]
+ * @property {number} [brandId] - Bidder-specific Brand ID (some advertisers may have many brands). example:	4444
+ * @property {string} [brandName] - Brand Name. example:	"BrandB"
+ * @property {string} [primaryCatId] - Primary IAB category ID. example:	"IAB-111"
+ * @property {Array<string>} [secondaryCatIds] - Array of secondary IAB category IDs. example:	["IAB-222","IAB-333"]
+ */
