@@ -726,11 +726,16 @@ function getAdPositionByElementId(elementId) {
       let bottom = Math.min(windowHeight, bounding.bottom);
       let top = Math.max(0, bounding.top);
 
-      let intersectionArea = (right - left) * (bottom - top);
+      let intersectionWidth = right - left;
+      let intersectionHeight = bottom - top;
+
+      let intersectionArea = (intersectionHeight > 0 && intersectionWidth > 0) ? (intersectionHeight * intersectionWidth) : 0;
       let adSlotArea = (bounding.right - bounding.left) * (bounding.bottom - bounding.top);
 
-      // Atleast 50% of intersection in window
-      adPosition = (intersectionArea * 2 >= adSlotArea) ? "ATF" : "BTF";
+      if(adSlotArea > 0) {
+        // Atleast 50% of intersection in window
+        adPosition = (intersectionArea * 2 >= adSlotArea) ? "ATF" : "BTF";
+      }
     }
   } else {
     utils.logWarn("OX: DOM element not for id " + elementId);
