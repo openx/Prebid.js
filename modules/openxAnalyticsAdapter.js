@@ -19,7 +19,7 @@ const SCHEMA_VERSION = '0.1';
 
 const MAX_RETRIES = 2;
 const MAX_TIMEOUT = 10000;
-const AUCTION_END_WAIT_TIME = 2000;
+const AUCTION_END_WAIT_TIME = 1000;
 const DEFAULT_SLOT_LOAD_BUFFER_TIME = 100;
 
 const auctionInitConst = CONSTANTS.EVENTS.AUCTION_INIT;
@@ -36,11 +36,11 @@ const SLOT_LOADED = 'slotOnload';
  * @property {string} publisherPlatformId
  * @property {number} publisherAccountId
  * @property {number} sampling
+ * @property {boolean} enableV2
  * @property {boolean} testPipeline
- * @property {number} slotLoadWaitTime
  * @property {Object} utmTagData
  * @property {string} adIdKey
- * @property {number} payloadSendDelayTime
+ * @property {number} payloadWaitTime
  * @property {Array<string>}adUnits
  */
 
@@ -51,12 +51,13 @@ const DEFAULT_ANALYTICS_CONFIG = {
   publisherPlatformId: void (0),
   publisherAccountId: void (0),
   sampling: 0.05, // default sampling rate of 5%
+  testCode: 'default',
+  enableV2: false,
   testPipeline: false,
   adIdKey: 'hb_adid',
   utmTagData: {},
   adUnits: [],
-  slotLoadWaitTime: DEFAULT_SLOT_LOAD_BUFFER_TIME,
-  payloadSendDelayTime: AUCTION_END_WAIT_TIME,
+  payloadWaitTime: AUCTION_END_WAIT_TIME,
 };
 
 let googletag = window.googletag || {};
@@ -66,6 +67,7 @@ googletag.cmd = googletag.cmd || [];
  * @type {AnalyticsConfig}
  */
 let analyticsConfig;
+
 let eventStack = {};
 let loadedAdSlots = {};
 
@@ -364,94 +366,93 @@ function onSlotLoaded({ slot }) {
         eventStack[auctionId] = null;
       }
       delete loadedAdSlots[auctionId];
-    }, analyticsConfig.slotLoadWaitTime);
+    }, analyticsConfig.payloadWaitTime);
   }
 }
 
-let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }), {
-  track({ eventType, args }) {
-    if (!checkInitOptions()) {
-      send(eventType, {}, null);
-      return;
-    }
-
-    let info = Object.assign({}, args);
-
-    if (info && info.ad) {
-      info.ad = '';
-    }
-
-    // on bid timeout events, the info is an array of bids
-    let auctionId = eventType === CONSTANTS.EVENTS.BID_TIMEOUT
-      ? info[0].auctionId
-      : info.auctionId;
-
-    if (eventType === auctionInitConst) {
-      eventStack[auctionId] = { options: {}, events: [] };
-      // utils.logInfo('OX: Event Stack updated after AuctionInit', eventStack);
-    } else if (eventType === bidWonConst) {
-      pushEvent(eventType, info, auctionId);
-      // utils.logInfo('OX: Bid won called for', auctionId);
-    } else if (eventType === auctionEndConst) {
-      pushEvent(eventType, removeads(info), auctionId);
-      // utils.logInfo('OX: Auction end called for', auctionId);
-      updateSessionId();
-      buildEventStack(auctionId);
-      if (isValidEventStack(auctionId)) {
-        setTimeout(function() {
-          // utils.logInfo('OX: Sending data', eventStack);
-          if (eventStack[auctionId]) {
-            send(
-              eventType,
-              eventStack,
-              auctionId
-            );
-            eventStack[auctionId] = null;
-          }
-          delete loadedAdSlots[auctionId];
-          // utils.logInfo('OX: Deleted Auction Info for auctionId', auctionId);
-        }, analyticsConfig.payloadSendDelayTime);
-      } else {
-        setTimeout(function() {
-          eventStack[auctionId] = null;
-          // utils.logInfo('OX: Deleted Auction Info for auctionId', auctionId);
-        }, analyticsConfig.payloadSendDelayTime);
-      }
-    } else if (eventType === bidTimeoutConst) {
-      // utils.logInfo('SA: Bid Timedout for', auctionId);
-      pushEvent(eventType, info, auctionId);
-    }
-  }
-});
+let openxAdapter = Object.assign(adapter({ urlParam, analyticsType }));
 
 openxAdapter.originEnableAnalytics = openxAdapter.enableAnalytics;
 
-openxAdapter.enableAnalytics = function(adapterConfig) {
-  analyticsConfig = {...DEFAULT_ANALYTICS_CONFIG, ...adapterConfig.options};
-  analyticsConfig.testCode = getTestCode();
-  analyticsConfig.utmTagData = this.buildUtmTagData();
-  utils.logInfo('OpenX Analytics enabled with config', analyticsConfig);
-
-  if (analyticsConfig.testPipeline) {
-    // override track method with v2 handlers
-    openxAdapter.track = prebidAnalyticsEventHandler;
-
-    googletag.cmd.push(function() {
-      googletag.pubads().addEventListener(SLOT_LOADED, args => {
-        openxAdapter.track({ eventType: SLOT_LOADED, args });
-        utils.logInfo('OX: SlotOnLoad event triggered');
-      });
-    });
-  } else {
-    googletag.cmd.push(function() {
-      googletag.pubads().addEventListener(SLOT_LOADED, function(args) {
-        utils.logInfo('OX: SlotOnLoad event triggered');
-        onSlotLoaded(args);
-      });
-    });
+openxAdapter.enableAnalytics = function(adapterConfig = {options:{}}) {
+  // Backwards compatibility for external documentation
+  if(adapterConfig.options.slotLoadWaitTime){
+    adapterConfig.options.payloadWaitTime = adapterConfig.options.slotLoadWaitTime;
   }
 
-  openxAdapter.originEnableAnalytics(adapterConfig);
+  if(isValidConfig(adapterConfig)){
+    analyticsConfig = {...DEFAULT_ANALYTICS_CONFIG, ...adapterConfig.options};
+    analyticsConfig.utmTagData = this.buildUtmTagData();
+    utils.logInfo('OpenX Analytics enabled with config', analyticsConfig);
+
+    if (analyticsConfig.testPipeline) {
+      openxAdapter.track = (args) => {
+        prebidAnalyticsEventHandlerV1(args);
+        prebidAnalyticsEventHandlerV2(args);
+      };
+
+      googletag.cmd.push(function() {
+        googletag.pubads().addEventListener(SLOT_LOADED, args => {
+          utils.logInfo('OX: SlotOnLoad event triggered');
+          onSlotLoaded(args);
+          onSlotLoadedV2(args);
+        });
+      });
+
+    } else if (analyticsConfig.enableV2) {
+      // override track method with v2 handlers
+      openxAdapter.track = prebidAnalyticsEventHandlerV2;
+
+      googletag.cmd.push(function() {
+        googletag.pubads().addEventListener(SLOT_LOADED, args => {
+          openxAdapter.track({ eventType: SLOT_LOADED, args });
+          utils.logInfo('OX: SlotOnLoad event triggered');
+        });
+      });
+    } else {
+      openxAdapter.track = prebidAnalyticsEventHandlerV1;
+      googletag.cmd.push(function() {
+        googletag.pubads().addEventListener(SLOT_LOADED, function(args) {
+          utils.logInfo('OX: SlotOnLoad event triggered');
+          onSlotLoaded(args);
+        });
+      });
+    }
+
+    openxAdapter.originEnableAnalytics(adapterConfig);
+  }
+
+  function isValidConfig({options: analyticsOptions}){
+    const fieldValidations = [
+      // tuple of property, type, required
+      ['publisherPlatformId', 'string', true],
+      ['publisherAccountId', 'number', true],
+      ['sampling', 'number', false],
+      ['enableV2', 'boolean', false],
+      ['testPipeline', 'boolean', false],
+      ['adIdKey', 'string', false],
+      ['payloadWaitTime', 'number', false],
+    ];
+
+    let failedValidation = fieldValidations.find(([property, type, required]) => {
+      // if required, the property has to exist
+      // if property exists, type check value
+      return (required && !analyticsOptions.hasOwnProperty(property)) ||
+        (analyticsOptions.hasOwnProperty(property) && typeof analyticsOptions[property] !== type);
+    });
+
+    if(failedValidation) {
+      let [property, type, required] = failedValidation;
+
+      if(required){
+        utils.logError(`OpenXAnalyticsAdapter: Expected '${property}' to exist and of type '${type}'`);
+      } else {
+        utils.logError(`OpenXAnalyticsAdapter: Expected '${property}' to be type '${type}'`);
+      }
+    }
+
+    return !failedValidation;
+  }
 };
 
 openxAdapter.buildUtmTagData = function() {
@@ -743,17 +744,66 @@ function getAdPositionByElementId(elementId) {
   return adPosition;
 }
 
-openxAdapter.reset = function() {
-  eventStack = {};
-  loadedAdSlots = {};
-};
-
 openxAdapter.slotOnLoad = onSlotLoaded;
 
 adapterManager.registerAnalyticsAdapter({
   adapter: openxAdapter,
   code: 'openx'
 });
+
+function prebidAnalyticsEventHandlerV1({eventType, args}){
+  if (!checkInitOptions()) {
+    send(eventType, {}, null);
+    return;
+  }
+
+  let info = Object.assign({}, args);
+
+  if (info && info.ad) {
+    info.ad = '';
+  }
+
+  // on bid timeout events, the info is an array of bids
+  let auctionId = eventType === CONSTANTS.EVENTS.BID_TIMEOUT
+    ? info[0].auctionId
+    : info.auctionId;
+
+  if (eventType === auctionInitConst) {
+    eventStack[auctionId] = { options: {}, events: [] };
+    // utils.logInfo('OX: Event Stack updated after AuctionInit', eventStack);
+  } else if (eventType === bidWonConst) {
+    pushEvent(eventType, info, auctionId);
+    // utils.logInfo('OX: Bid won called for', auctionId);
+  } else if (eventType === auctionEndConst) {
+    pushEvent(eventType, removeads(info), auctionId);
+    // utils.logInfo('OX: Auction end called for', auctionId);
+    updateSessionId();
+    buildEventStack(auctionId);
+    if (isValidEventStack(auctionId)) {
+      setTimeout(function() {
+        // utils.logInfo('OX: Sending data', eventStack);
+        if (eventStack[auctionId]) {
+          send(
+            eventType,
+            eventStack,
+            auctionId
+          );
+          eventStack[auctionId] = null;
+        }
+        delete loadedAdSlots[auctionId];
+        // utils.logInfo('OX: Deleted Auction Info for auctionId', auctionId);
+      }, analyticsConfig.payloadWaitTime);
+    } else {
+      setTimeout(function() {
+        eventStack[auctionId] = null;
+        // utils.logInfo('OX: Deleted Auction Info for auctionId', auctionId);
+      }, analyticsConfig.payloadWaitTime);
+    }
+  } else if (eventType === bidTimeoutConst) {
+    // utils.logInfo('SA: Bid Timedout for', auctionId);
+    pushEvent(eventType, info, auctionId);
+  }
+}
 
 //* *******  V2 Code  *******
 const {
@@ -764,7 +814,7 @@ const ENDPOINT = 'https://prebid.openx.net/ox/analytics';
 let auctionMap = {};
 let auctionOrder = 1; // tracks the number of auctions ran on the page
 
-function prebidAnalyticsEventHandler({eventType, args}) {
+function prebidAnalyticsEventHandlerV2({eventType, args}) {
   utils.logMessage(eventType, Object.assign({}, args));
   switch (eventType) {
     case AUCTION_INIT:
@@ -802,7 +852,7 @@ noBids: []
 bidsReceived: []
 winningBids: []
 timeout: 3000
-config: {publisherPlatformId: "a3aece0c-9e80-4316-8deb-faf804779bd1", publisherAccountId: 537143056, sampling: 1, testPipeline: true}
+config: {publisherPlatformId: "a3aece0c-9e80-4316-8deb-faf804779bd1", publisherAccountId: 537143056, sampling: 1, enableV2: true}
  */
 function onAuctionInit({auctionId, timestamp: startTime, timeout, adUnitCodes}) {
   auctionMap[auctionId] = {
@@ -949,8 +999,8 @@ function onSlotLoadedV2({ slot }) {
   // prepare to send regardless if auction is complete or not as a failsafe in case not all events are tracked
   // add additional padding when not all slots are rendered
   const delayTime = auction.adunitCodesRenderedCount === auction.adUnitCodesCount
-    ? analyticsConfig.slotLoadWaitTime
-    : analyticsConfig.slotLoadWaitTime + 500;
+    ? analyticsConfig.payloadWaitTime
+    : analyticsConfig.payloadWaitTime + 500;
 
   auction.auctionSendDelayTimer = setTimeout(() => {
     let payload = JSON.stringify([buildAuctionPayload(auction)]);
@@ -1031,7 +1081,7 @@ function buildAuctionPayload(auction) {
             } = bidderBidResponse;
 
             return {
-              microCPM: cpm * 1000,
+              microCpm: cpm * 1000,
               netRevenue,
               currency,
               mediaType,
@@ -1093,6 +1143,11 @@ export default Object.assign({
 
 // reset the cache for unit tests
 openxAdapter.reset = function() {
+  // V1 data
+  eventStack = {};
+  loadedAdSlots = {};
+
+  // V2 data
   auctionMap = {};
   auctionOrder = 1;
 };
@@ -1145,15 +1200,15 @@ openxAdapter.reset = function() {
 
 /**
  * @typedef {Object} BidResponseMeta
- * @property {number} [networkId] Bidder-specific Network/DSP Id
+ * @property {string} [networkId] Bidder-specific Network/DSP Id
  * @property {string} [networkName] - Network/DSP Name. example:	"NetworkN"
- * @property {number} [agencyId] - Bidder-specific Agency ID. example:	2222
+ * @property {string} [agencyId] - Bidder-specific Agency ID. example:	2222
  * @property {string} [agencyName] - Agency Name. example:	"Agency, Inc."
- * @property {number} [advertiserId] - Bidder-specific Advertiser ID. example:	3333
+ * @property {string} [advertiserId] - Bidder-specific Advertiser ID. example:	3333
  * @property {string} [advertiserName] - Advertiser Name. example:	"AdvertiserA"
  * @property {Array<string>} [advertiserDomains] - Array of Advertiser Domains for the landing page(s). This is an array
  *                                             to align with the OpenRTB ‘adomain’ field.. example:	["advertisera.com"]
- * @property {number} [brandId] - Bidder-specific Brand ID (some advertisers may have many brands). example:	4444
+ * @property {string} [brandId] - Bidder-specific Brand ID (some advertisers may have many brands). example:	4444
  * @property {string} [brandName] - Brand Name. example:	"BrandB"
  * @property {string} [primaryCatId] - Primary IAB category ID. example:	"IAB-111"
  * @property {Array<string>} [secondaryCatIds] - Array of secondary IAB category IDs. example:	["IAB-222","IAB-333"]
