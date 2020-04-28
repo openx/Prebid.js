@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import openxAdapterParams from 'modules/openxAnalyticsAdapter.js';
+import openxAdapterParams, {AUCTION_STATES} from 'modules/openxAnalyticsAdapter.js';
 import { config } from 'src/config.js';
 import events from 'src/events.js';
 import CONSTANTS from 'src/constants.json';
@@ -21,7 +21,7 @@ describe('openx analytics adapter', function() {
       spy = sinon.spy(utils, 'logError');
     });
 
-    afterEach(function(){
+    afterEach(function() {
       utils.logError.restore();
     });
 
@@ -676,6 +676,14 @@ describe('openx analytics adapter', function() {
       auctionId: 'test-auction-id'
     };
 
+    const auctionEnd = {
+      auctionId: 'test-auction-id',
+      timestamp: 1586000000000,
+      auctionEnd: 1586000000100,
+      timeout: 3000,
+      adUnitCodes: [AD_UNIT_CODE],
+    };
+
     const bidWonCloseX = {
       requestId: 'test-closex-request-id',
       adId: 'test-closex-ad-id',
@@ -683,35 +691,40 @@ describe('openx analytics adapter', function() {
       auctionId: 'test-auction-id'
     };
 
+
     function simulateAuction(events) {
       let highestBid;
 
       events.forEach(event => {
         const [eventType, args] = event;
-        openxAdapter.track({ eventType, args });
         if (eventType === BID_RESPONSE) {
           highestBid = highestBid || args;
           if (highestBid.cpm < args.cpm) {
             highestBid = args;
           }
         }
-      });
 
-      openxAdapter.track({
-        eventType: SLOT_LOADED,
-        args: {
-          slot: {
-            getAdUnitPath: () => {
-              return '/12345678/test_ad_unit';
-            },
-            getSlotElementId: () => {
-              return AD_UNIT_CODE;
-            },
-            getTargeting: sinon
-              .stub()
-              .withArgs('hb_adid')
-              .returns(highestBid ? [highestBid.adId] : [])
-          }
+        if (eventType === SLOT_LOADED) {
+          const slotLoaded = {
+            slot: {
+              getAdUnitPath: () => {
+                return '/12345678/test_ad_unit';
+              },
+              getSlotElementId: () => {
+                return AD_UNIT_CODE;
+              },
+              getTargeting: (key) => {
+                if (key === 'hb_adid') {
+                  return highestBid ? [highestBid.adId] : [];
+                } else {
+                  return [];
+                }
+              }
+            }
+          };
+          openxAdapter.track({ eventType, args: slotLoaded });
+        } else {
+          openxAdapter.track({ eventType, args });
         }
       });
     }
@@ -745,10 +758,12 @@ describe('openx analytics adapter', function() {
 
         simulateAuction([
           [AUCTION_INIT, auctionInit],
+          [SLOT_LOADED]
         ]);
 
         simulateAuction([
-          [AUCTION_INIT, {auctionId: 'second-auction-id', ...auctionInit} ],
+          [AUCTION_INIT, {...auctionInit, auctionId: 'second-auction-id'} ],
+          [SLOT_LOADED]
         ]);
 
         clock.tick(SLOT_LOAD_WAIT_TIME);
@@ -795,6 +810,7 @@ describe('openx analytics adapter', function() {
 
         simulateAuction([
           [AUCTION_INIT, auctionInit],
+          [SLOT_LOADED],
         ]);
         clock.tick(SLOT_LOAD_WAIT_TIME);
         auction = JSON.parse(server.requests[0].requestBody)[0];
@@ -819,7 +835,8 @@ describe('openx analytics adapter', function() {
             publisherPlatformId: 'test-platform-id',
             sample: 1.0,
             enableV2: true,
-            payloadWaitTime: SLOT_LOAD_WAIT_TIME
+            payloadWaitTime: SLOT_LOAD_WAIT_TIME,
+            payloadWaitTimePadding: SLOT_LOAD_WAIT_TIME,
           }
         });
 
@@ -827,8 +844,9 @@ describe('openx analytics adapter', function() {
           [AUCTION_INIT, auctionInit],
           [BID_REQUESTED, bidRequestedCloseX],
           [BID_REQUESTED, bidRequestedOpenX],
+          [SLOT_LOADED],
         ]);
-        clock.tick(SLOT_LOAD_WAIT_TIME);
+        clock.tick(SLOT_LOAD_WAIT_TIME * 2);
         auction = JSON.parse(server.requests[0].requestBody)[0];
       });
 
@@ -874,7 +892,8 @@ describe('openx analytics adapter', function() {
             publisherPlatformId: 'test-platform-id',
             sample: 1.0,
             enableV2: true,
-            payloadWaitTime: SLOT_LOAD_WAIT_TIME
+            payloadWaitTime: SLOT_LOAD_WAIT_TIME,
+            payloadWaitTimePadding: SLOT_LOAD_WAIT_TIME,
           }
         });
 
@@ -884,8 +903,9 @@ describe('openx analytics adapter', function() {
           [BID_REQUESTED, bidRequestedOpenX],
           [BID_TIMEOUT, bidTimeoutCloseX],
           [BID_TIMEOUT, bidTimeoutOpenX],
+          [AUCTION_END, auctionEnd]
         ]);
-        clock.tick(SLOT_LOAD_WAIT_TIME);
+        clock.tick(SLOT_LOAD_WAIT_TIME * 2);
         auction = JSON.parse(server.requests[0].requestBody)[0];
 
         openxBidRequest = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
@@ -915,7 +935,8 @@ describe('openx analytics adapter', function() {
             publisherPlatformId: 'test-platform-id',
             sample: 1.0,
             enableV2: true,
-            payloadWaitTime: SLOT_LOAD_WAIT_TIME
+            payloadWaitTime: SLOT_LOAD_WAIT_TIME,
+            payloadWaitTimePadding: SLOT_LOAD_WAIT_TIME
           }
         });
 
@@ -924,9 +945,11 @@ describe('openx analytics adapter', function() {
           [BID_REQUESTED, bidRequestedCloseX],
           [BID_REQUESTED, bidRequestedOpenX],
           [BID_RESPONSE, bidResponseOpenX],
-          [BID_RESPONSE, bidResponseCloseX]
+          [BID_RESPONSE, bidResponseCloseX],
+          [AUCTION_END, auctionEnd]
         ]);
-        clock.tick(SLOT_LOAD_WAIT_TIME);
+
+        clock.tick(SLOT_LOAD_WAIT_TIME * 2);
         auction = JSON.parse(server.requests[0].requestBody)[0];
 
         openxBidResponse = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx').bidResponses[0];
@@ -985,9 +1008,17 @@ describe('openx analytics adapter', function() {
         expect(openxBidResponse.currency).to.equal(bidResponseOpenX.currency);
         expect(closexBidResponse.currency).to.equal(bidResponseCloseX.currency);
       });
+
+      it('should track the auction end time', function () {
+        expect(auction.endTime).to.equal(auctionEnd.auctionEnd);
+      });
+
+      it('should track that the auction ended', function () {
+        expect(auction.state).to.equal(AUCTION_STATES.ENDED);
+      });
     });
 
-    describe('when are bidder wins', function () {
+    describe('when there are bidder wins', function () {
       const CURRENT_TIME = 1586000000000;
       let auction;
       beforeEach(function () {
@@ -997,7 +1028,8 @@ describe('openx analytics adapter', function() {
             publisherAccountId: 123,
             sample: 1.0,
             enableV2: true,
-            payloadWaitTime: SLOT_LOAD_WAIT_TIME
+            payloadWaitTime: SLOT_LOAD_WAIT_TIME,
+            payloadWaitTimePadding: SLOT_LOAD_WAIT_TIME
           }
         });
 
@@ -1010,10 +1042,11 @@ describe('openx analytics adapter', function() {
           [BID_REQUESTED, bidRequestedCloseX],
           [BID_RESPONSE, bidResponseOpenX],
           [BID_RESPONSE, bidResponseCloseX],
+          [AUCTION_END, auctionEnd],
           [BID_WON, bidWonOpenX]
         ]);
 
-        clock.tick(SLOT_LOAD_WAIT_TIME);
+        clock.tick(SLOT_LOAD_WAIT_TIME * 2);
         auction = JSON.parse(server.requests[0].requestBody)[0];
       });
 
@@ -1032,6 +1065,46 @@ describe('openx analytics adapter', function() {
         let closexBidder = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
         expect(closexBidder.bidResponses[0]).to.contain({winner: false});
       });
+    });
+
+    describe('when a winning bid renders', function () {
+      const CURRENT_TIME = 1586000000000;
+      let auction;
+      beforeEach(function () {
+        openxAdapter.enableAnalytics({
+          options: {
+            publisherPlatformId: 'test-platform-id',
+            publisherAccountId: 123,
+            sample: 1.0,
+            enableV2: true,
+            payloadWaitTime: SLOT_LOAD_WAIT_TIME,
+            payloadWaitTimePadding: SLOT_LOAD_WAIT_TIME
+          }
+        });
+
+        // set current time
+        clock = sinon.useFakeTimers(CURRENT_TIME);
+
+        simulateAuction([
+          [AUCTION_INIT, auctionInit],
+          [BID_REQUESTED, bidRequestedOpenX],
+          [BID_REQUESTED, bidRequestedCloseX],
+          [BID_RESPONSE, bidResponseOpenX],
+          [BID_RESPONSE, bidResponseCloseX],
+          [AUCTION_END, auctionEnd],
+          [BID_WON, bidWonOpenX],
+          [SLOT_LOADED]
+        ]);
+
+        clock.tick(SLOT_LOAD_WAIT_TIME * 2);
+        auction = JSON.parse(server.requests[0].requestBody)[0];
+      });
+
+      afterEach(function () {
+        clock.restore();
+        openxAdapter.reset();
+        openxAdapter.disableAnalytics();
+      });
 
       it('should track that winning bid rendered', function () {
         let openxBidder = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
@@ -1041,6 +1114,10 @@ describe('openx analytics adapter', function() {
       it('should track that winning bid render time', function () {
         let openxBidder = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
         expect(openxBidder.bidResponses[0]).to.contain({renderTime: CURRENT_TIME});
+      });
+
+      it('should track that the auction completed', function () {
+        expect(auction.state).to.equal(AUCTION_STATES.COMPLETED);
       });
     });
   });
@@ -1134,8 +1211,8 @@ describe('openx analytics adapter', function() {
       'mediaTypes': {'banner': {'sizes': [[300, 250]]}},
       'bids': [{'bidder': 'openx',
         'params': {'unit': '540249866', 'delDomain': 'sademo-d.openx.net'}},
-        {'bidder': 'closex',
-          'params': {'unit': '540249866', 'delDomain': 'sademo-d.openx.net'}}],
+      {'bidder': 'closex',
+        'params': {'unit': '540249866', 'delDomain': 'sademo-d.openx.net'}}],
       'sizes': [[300, 250]],
       'transactionId': 'test-transaction-id'}];
 
@@ -1259,7 +1336,7 @@ describe('openx analytics adapter', function() {
         openxAdapter.disableAnalytics();
       });
 
-      it('should send out both payloads', function(){
+      it('should send out both payloads', function() {
         expect(server.requests.length).to.equal(2);
       });
 
@@ -1289,7 +1366,6 @@ describe('openx analytics adapter', function() {
         });
 
         expect(bidWonEventInfoList.length).to.equal(1);
-
 
         let openxBidder = v2Auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
         expect(openxBidder.bidResponses[0]).to.contain({winner: true});
