@@ -603,6 +603,9 @@ describe('openx analytics adapter', function() {
           bidId: 'test-openx-request-id',
           bidder: 'openx',
           params: { unit: 'test-openx-ad-unit-id' },
+          userId: {
+            tdid: 'test-tradedesk-id'
+          }
         }
       ],
       start: 1586000000010
@@ -617,6 +620,9 @@ describe('openx analytics adapter', function() {
           bidId: 'test-closex-request-id',
           bidder: 'closex',
           params: { unit: 'test-closex-ad-unit-id' },
+          userId: {
+            tdid: 'test-tradedesk-id'
+          }
         }
       ],
       start: 1586000000020
@@ -657,17 +663,20 @@ describe('openx analytics adapter', function() {
       ts: 'test-closex-ts'
     };
 
-    const bidTimeoutOpenX = [{
+    const bidTimeoutOpenX = {
+      0: {
       adUnitCode: AD_UNIT_CODE,
       auctionId: 'test-auction-id',
       bidId: 'test-openx-request-id'
-    }];
+    }};
 
-    const bidTimeoutCloseX = [{
-      adUnitCode: AD_UNIT_CODE,
-      auctionId: 'test-auction-id',
-      bidId: 'test-closex-request-id'
-    }];
+    const bidTimeoutCloseX = {
+      0: {
+        adUnitCode: AD_UNIT_CODE,
+        auctionId: 'test-auction-id',
+        bidId: 'test-closex-request-id'
+      }
+    };
 
     const bidWonOpenX = {
       requestId: 'test-openx-request-id',
@@ -690,7 +699,6 @@ describe('openx analytics adapter', function() {
       adUnitCode: AD_UNIT_CODE,
       auctionId: 'test-auction-id'
     };
-
 
     function simulateAuction(events) {
       let highestBid;
@@ -869,6 +877,14 @@ describe('openx analytics adapter', function() {
 
         expect(openxBidder.adUnitCode).to.equal(AD_UNIT_CODE);
         expect(closexBidder.adUnitCode).to.equal(AD_UNIT_CODE);
+      });
+
+      it('should track the user ids', function () {
+        let openxBidder = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
+        let closexBidder = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
+
+        expect(openxBidder.userIds).to.deep.include({module: 'tdid', id: bidRequestedOpenX.bids[0].userId.tdid});
+        expect(closexBidder.userIds).to.deep.include({module: 'tdid', id: bidRequestedCloseX.bids[0].userId.tdid});
       });
 
       it('should not have responded', function () {
@@ -1195,18 +1211,6 @@ describe('openx analytics adapter', function() {
       ts: 'test-closex-ts'
     };
 
-    const bidTimeoutOpenX = [{
-      adUnitCode: AD_UNIT_CODE,
-      auctionId: 'test-auction-id',
-      bidId: 'test-openx-request-id'
-    }];
-
-    const bidTimeoutCloseX = [{
-      adUnitCode: AD_UNIT_CODE,
-      auctionId: 'test-auction-id',
-      bidId: 'test-closex-request-id'
-    }];
-
     const openxAdUnitInfo = [{'code': 'test-div-1',
       'mediaTypes': {'banner': {'sizes': [[300, 250]]}},
       'bids': [{'bidder': 'openx',
@@ -1235,13 +1239,6 @@ describe('openx analytics adapter', function() {
     const bidWonOpenX = {
       requestId: 'test-openx-request-id',
       adId: 'test-openx-ad-id',
-      adUnitCode: AD_UNIT_CODE,
-      auctionId: 'test-auction-id'
-    };
-
-    const bidWonCloseX = {
-      requestId: 'test-closex-request-id',
-      adId: 'test-closex-ad-id',
       adUnitCode: AD_UNIT_CODE,
       auctionId: 'test-auction-id'
     };
