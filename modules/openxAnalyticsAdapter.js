@@ -5,6 +5,7 @@ import adapterManager from '../src/adapterManager.js';
 
 //* *******  V2 Code
 import { ajax } from '../src/ajax.js';
+import {getWindowLocation, parseQS} from '../src/utils';
 
 // temp dependency on zlib to minimize payload
 const zlib = require('zlib');  // eslint-disable-line
@@ -38,11 +39,11 @@ const SLOT_LOADED = 'slotOnload';
  * @property {number} sampling
  * @property {boolean} enableV2
  * @property {boolean} testPipeline
- * @property {Object} utmTagData
+ * @property {Object} campaign
  * @property {string} adIdKey
  * @property {number} payloadWaitTime
  * @property {number} payloadWaitTimePadding
- * @property {Array<string>}adUnits
+ * @property {Array<string>} adUnits
  */
 
 /**
@@ -56,10 +57,10 @@ const DEFAULT_ANALYTICS_CONFIG = {
   enableV2: false,
   testPipeline: false,
   adIdKey: 'hb_adid',
-  utmTagData: {},
+  campaign: {},
   adUnits: [],
   payloadWaitTime: AUCTION_END_WAIT_TIME,
-  payloadWaitTimePadding: 100
+  payloadWaitTimePadding: 2000
 };
 
 let googletag = window.googletag || {};
@@ -75,12 +76,20 @@ let loadedAdSlots = {};
 
 let localStoragePrefix = 'openx_analytics_';
 let utmTags = [
+  'utm_campaign',
   'utm_source',
   'utm_medium',
-  'utm_campaign',
   'utm_term',
   'utm_content'
 ];
+
+const UTM_TO_CAMPAIGN_PROPERTIES = {
+  'utm_campaign': 'name',
+  'utm_source': 'source',
+  'utm_medium': 'medium',
+  'utm_term': 'term',
+  'utm_content': 'content'
+};
 let utmTimeoutKey = 'utm_timeout';
 let utmTimeout = 60 * 60 * 1000;
 let sessionTimeout = 60 * 60 * 1000;
@@ -384,7 +393,10 @@ openxAdapter.enableAnalytics = function(adapterConfig = {options: {}}) {
 
   if (isValidConfig(adapterConfig)) {
     analyticsConfig = {...DEFAULT_ANALYTICS_CONFIG, ...adapterConfig.options};
-    analyticsConfig.utmTagData = this.buildUtmTagData();
+
+    // campaign properties defined by config will override utm query parameters
+    analyticsConfig.campaign = {...buildCampaignFromUtmCodes(), ...analyticsConfig.campaign};
+
     utils.logInfo('OpenX Analytics enabled with config', analyticsConfig);
 
     if (analyticsConfig.testPipeline) {
@@ -442,7 +454,6 @@ openxAdapter.enableAnalytics = function(adapterConfig = {options: {}}) {
       return (required && !analyticsOptions.hasOwnProperty(property)) ||
         (analyticsOptions.hasOwnProperty(property) && typeof analyticsOptions[property] !== type);
     });
-
     if (failedValidation) {
       let [property, type, required] = failedValidation;
 
@@ -457,36 +468,19 @@ openxAdapter.enableAnalytics = function(adapterConfig = {options: {}}) {
   }
 };
 
-openxAdapter.buildUtmTagData = function() {
-  let utmTagData = {};
-  let utmTagsDetected = false;
-  utmTags.forEach(function(utmTagKey) {
-    let utmTagValue = getParameterByName(utmTagKey);
-    if (utmTagValue !== '') {
-      utmTagsDetected = true;
-    }
-    utmTagData[utmTagKey] = utmTagValue;
-  });
-  utmTags.forEach(function(utmTagKey) {
-    if (utmTagsDetected) {
-      localStorage.setItem(
-        buildUtmLocalStorageKey(utmTagKey),
-        utmTagData[utmTagKey]
-      );
-      updateUtmTimeout();
-    } else {
-      if (!isUtmTimeoutExpired()) {
-        utmTagData[utmTagKey] = localStorage.getItem(
-          buildUtmLocalStorageKey(utmTagKey)
-        )
-          ? localStorage.getItem(buildUtmLocalStorageKey(utmTagKey))
-          : '';
-        updateUtmTimeout();
-      }
+function buildCampaignFromUtmCodes() {
+  let campaign = {};
+  let queryParams = utils.parseQS(utils.getWindowLocation() && utils.getWindowLocation().search);
+
+  utmTags.forEach(function(utmKey) {
+    let utmValue = queryParams[utmKey];
+    if(utmValue){
+      let key = UTM_TO_CAMPAIGN_PROPERTIES[utmKey];
+      campaign[key] = utmValue;
     }
   });
-  return utmTagData;
-};
+  return campaign;
+}
 
 function buildPayload(
   data,
@@ -495,7 +489,8 @@ function buildPayload(
   publisherAccountId,
   auctionId,
   testCode,
-  sourceUrl
+  sourceUrl,
+  campaign
 ) {
   return {
     adapterVersion: ADAPTER_VERSION,
@@ -506,7 +501,8 @@ function buildPayload(
     publisherAccountId: publisherAccountId,
     auctionId: auctionId,
     testCode: testCode,
-    sourceUrl: sourceUrl
+    sourceUrl: sourceUrl,
+    campaign
   };
 }
 
@@ -638,7 +634,8 @@ function send(eventType, eventStack, auctionId) {
         publisherAccountId,
         auctionId,
         testCode,
-        sourceUrl
+        sourceUrl,
+        analyticsConfig.campaign
       );
       apiCall(urlGenerated, MAX_RETRIES, payload);
     } else {
@@ -1019,10 +1016,13 @@ function onSlotLoadedV2({ slot }) {
     adUnit.renderTime = renderTime;
   }
 
+  if (auction.adunitCodesRenderedCount === auction.adUnitCodesCount) {
+    auction.state = AUCTION_STATES.COMPLETED;
+  }
+
   // prepare to send regardless if auction is complete or not as a failsafe in case not all events are tracked
   // add additional padding when not all slots are rendered
   delayedSend(auction);
-  auction.state = AUCTION_STATES.COMPLETED;
 }
 
 function delayedSend(auction) {
@@ -1065,10 +1065,12 @@ function getAuctionByGoogleTagSLot(slot) {
 
 function buildAuctionPayload(auction) {
   let {startTime, endTime, state, timeout, auctionOrder, adUnitCodeToBidderRequestMap} = auction;
+  let {publisherPlatformId, publisherAccountId, campaign} = analyticsConfig;
 
   return {
-    publisherPlatformId: analyticsConfig.publisherPlatformId,
-    publisherAccountId: analyticsConfig.publisherAccountId,
+    publisherPlatformId,
+    publisherAccountId,
+    campaign,
     state,
     startTime,
     endTime,
