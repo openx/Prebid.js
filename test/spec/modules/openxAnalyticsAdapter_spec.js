@@ -586,6 +586,16 @@ describe('openx analytics adapter', function() {
 
   describe('when version 2 is enabled', function () {
     const AD_UNIT_CODE = 'test-div-1';
+    const SLOT_LOAD_WAIT_TIME = 10;
+
+    const DEFAULT_V2_ANALYTICS_CONFIG = {
+      publisherAccountId: 123,
+      publisherPlatformId: 'test-platform-id',
+      sample: 1.0,
+      enableV2: true,
+      payloadWaitTime: SLOT_LOAD_WAIT_TIME,
+      payloadWaitTimePadding: SLOT_LOAD_WAIT_TIME
+    };
 
     const auctionInit = {
       auctionId: 'test-auction-id',
@@ -729,7 +739,6 @@ describe('openx analytics adapter', function() {
       });
     }
 
-    const SLOT_LOAD_WAIT_TIME = 10;
     let clock;
 
     beforeEach(function() {
@@ -746,15 +755,7 @@ describe('openx analytics adapter', function() {
       let auction;
       let auction2;
       beforeEach(function () {
-        openxAdapter.enableAnalytics({
-          options: {
-            publisherAccountId: 123,
-            publisherPlatformId: 'test-platform-id',
-            sample: 1.0,
-            enableV2: true,
-            payloadWaitTime: SLOT_LOAD_WAIT_TIME
-          }
-        });
+        openxAdapter.enableAnalytics({options: DEFAULT_V2_ANALYTICS_CONFIG});
 
         simulateAuction([
           [AUCTION_INIT, auctionInit],
@@ -799,12 +800,8 @@ describe('openx analytics adapter', function() {
       beforeEach(function () {
         openxAdapter.enableAnalytics({
           options: {
-            publisherAccountId: 123,
-            publisherPlatformId: 'test-platform-id',
-            sample: 1.0,
-            enableV2: true,
-            testCode: 'test-code',
-            payloadWaitTime: SLOT_LOAD_WAIT_TIME
+            ...DEFAULT_V2_ANALYTICS_CONFIG,
+            testCode: 'test-code'
           }
         });
 
@@ -826,19 +823,80 @@ describe('openx analytics adapter', function() {
       });
     });
 
+    describe('when there is campaign (utm) data', function () {
+      let auction;
+      beforeEach(function () {
+
+      });
+
+      afterEach(function () {
+        openxAdapter.reset();
+        utils.getWindowLocation.restore();
+        openxAdapter.disableAnalytics();
+      });
+
+      it('should track values from query params when they exist', function () {
+        sinon.stub(utils, 'getWindowLocation').returns({search: '?' +
+            'utm_campaign=test-campaign-name&' +
+            'utm_source=test-source&' +
+            'utm_medium=test-medium&'
+        });
+
+        openxAdapter.enableAnalytics({options: DEFAULT_V2_ANALYTICS_CONFIG});
+
+        simulateAuction([
+          [AUCTION_INIT, auctionInit],
+          [SLOT_LOADED],
+        ]);
+        clock.tick(SLOT_LOAD_WAIT_TIME);
+        auction = JSON.parse(server.requests[0].requestBody)[0];
+
+        expect(auction.campaign.name).to.equal('test-campaign-name');
+        expect(auction.campaign.source).to.equal('test-source');
+        expect(auction.campaign.medium).to.equal('test-medium');
+        expect(auction.campaign.content).to.be.undefined;
+        expect(auction.campaign.term).to.be.undefined;
+      });
+
+      it('should override query params if configuration parameters exist', function () {
+        sinon.stub(utils, 'getWindowLocation').returns({search: '?' +
+            'utm_campaign=test-campaign-name&' +
+            'utm_source=test-source&' +
+            'utm_medium=test-medium&' +
+            'utm_content=test-content&' +
+            'utm_term=test-term'
+        });
+
+        openxAdapter.enableAnalytics({
+          options: {
+            ...DEFAULT_V2_ANALYTICS_CONFIG,
+            campaign: {
+              name: 'test-config-name',
+              source: 'test-config-source',
+              medium: 'test-config-medium'
+            }
+          }
+        });
+
+        simulateAuction([
+          [AUCTION_INIT, auctionInit],
+          [SLOT_LOADED],
+        ]);
+        clock.tick(SLOT_LOAD_WAIT_TIME);
+        auction = JSON.parse(server.requests[0].requestBody)[0];
+
+        expect(auction.campaign.name).to.equal('test-config-name');
+        expect(auction.campaign.source).to.equal('test-config-source');
+        expect(auction.campaign.medium).to.equal('test-config-medium');
+        expect(auction.campaign.content).to.equal('test-content');
+        expect(auction.campaign.term).to.equal('test-term');
+      });
+    });
+
     describe('when there are bid requests', function () {
       let auction;
       beforeEach(function () {
-        openxAdapter.enableAnalytics({
-          options: {
-            publisherAccountId: 123,
-            publisherPlatformId: 'test-platform-id',
-            sample: 1.0,
-            enableV2: true,
-            payloadWaitTime: SLOT_LOAD_WAIT_TIME,
-            payloadWaitTimePadding: SLOT_LOAD_WAIT_TIME,
-          }
-        });
+        openxAdapter.enableAnalytics({options: DEFAULT_V2_ANALYTICS_CONFIG});
 
         simulateAuction([
           [AUCTION_INIT, auctionInit],
@@ -886,16 +944,7 @@ describe('openx analytics adapter', function() {
       let closexBidRequest;
 
       beforeEach(function () {
-        openxAdapter.enableAnalytics({
-          options: {
-            publisherAccountId: 123,
-            publisherPlatformId: 'test-platform-id',
-            sample: 1.0,
-            enableV2: true,
-            payloadWaitTime: SLOT_LOAD_WAIT_TIME,
-            payloadWaitTimePadding: SLOT_LOAD_WAIT_TIME,
-          }
-        });
+        openxAdapter.enableAnalytics({options: DEFAULT_V2_ANALYTICS_CONFIG});
 
         simulateAuction([
           [AUCTION_INIT, auctionInit],
@@ -929,16 +978,7 @@ describe('openx analytics adapter', function() {
       let closexBidResponse;
 
       beforeEach(function () {
-        openxAdapter.enableAnalytics({
-          options: {
-            publisherAccountId: 123,
-            publisherPlatformId: 'test-platform-id',
-            sample: 1.0,
-            enableV2: true,
-            payloadWaitTime: SLOT_LOAD_WAIT_TIME,
-            payloadWaitTimePadding: SLOT_LOAD_WAIT_TIME
-          }
-        });
+        openxAdapter.enableAnalytics({options: DEFAULT_V2_ANALYTICS_CONFIG});
 
         simulateAuction([
           [AUCTION_INIT, auctionInit],
@@ -1022,16 +1062,7 @@ describe('openx analytics adapter', function() {
       const CURRENT_TIME = 1586000000000;
       let auction;
       beforeEach(function () {
-        openxAdapter.enableAnalytics({
-          options: {
-            publisherPlatformId: 'test-platform-id',
-            publisherAccountId: 123,
-            sample: 1.0,
-            enableV2: true,
-            payloadWaitTime: SLOT_LOAD_WAIT_TIME,
-            payloadWaitTimePadding: SLOT_LOAD_WAIT_TIME
-          }
-        });
+        openxAdapter.enableAnalytics({options: DEFAULT_V2_ANALYTICS_CONFIG});
 
         // set current time
         clock = sinon.useFakeTimers(CURRENT_TIME);
@@ -1071,16 +1102,7 @@ describe('openx analytics adapter', function() {
       const CURRENT_TIME = 1586000000000;
       let auction;
       beforeEach(function () {
-        openxAdapter.enableAnalytics({
-          options: {
-            publisherPlatformId: 'test-platform-id',
-            publisherAccountId: 123,
-            sample: 1.0,
-            enableV2: true,
-            payloadWaitTime: SLOT_LOAD_WAIT_TIME,
-            payloadWaitTimePadding: SLOT_LOAD_WAIT_TIME
-          }
-        });
+        openxAdapter.enableAnalytics({options: DEFAULT_V2_ANALYTICS_CONFIG});
 
         // set current time
         clock = sinon.useFakeTimers(CURRENT_TIME);
