@@ -954,15 +954,15 @@ function onBidResponse(bidResponse) {
 
 function onBidTimeout(args) {
   utils._each(args, ({auctionId, adUnitCode, bidId: requestId}) => {
-      try{
-        auctionMap[auctionId].adUnitCodeToBidderRequestMap[adUnitCode][requestId].timedOut = true;
-      } catch (e) {
-        utils.logError(`ERROR: oxAnalyticsAdapter: unable to track timeout for 
-            auction:${auctionId}, adUnitCode:${adUnitCode}, requestId:${requestId}`)
-      }
-    });
+    if (auctionMap[auctionId]
+      && auctionMap[auctionId].adUnitCodeToBidderRequestMap
+      && auctionMap[auctionId].adUnitCodeToBidderRequestMap[adUnitCode]
+      && auctionMap[auctionId].adUnitCodeToBidderRequestMap[adUnitCode][requestId]
+    ) {
+      auctionMap[auctionId].adUnitCodeToBidderRequestMap[adUnitCode][requestId].timedOut = true;
+    }
+  });
 }
-
 /**
  *
  * @param {PbAuction} endedAuction
