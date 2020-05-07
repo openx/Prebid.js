@@ -885,13 +885,14 @@ function onBidRequested(bidRequest) {
   const adUnitCodeToBidderRequestMap = auction.adUnitCodeToBidderRequestMap;
 
   bidderRequests.forEach(bidderRequest => {
-    const { adUnitCode, bidder, bidId: requestId, mediaTypes, params, src } = bidderRequest;
+    const { adUnitCode, bidder, bidId: requestId, mediaTypes, params, src, userId } = bidderRequest;
 
     adUnitCodeToBidderRequestMap[adUnitCode][requestId] = {
       bidder,
       params,
       mediaTypes,
       source: src,
+      userId,
       startTime: start,
       timedOut: false,
       bids: {}
@@ -952,13 +953,16 @@ function onBidResponse(bidResponse) {
 }
 
 function onBidTimeout(args) {
-  utils
-    ._map(args, value => value)
-    .forEach(({ auctionId, adUnitCode, bidId: requestId }) => {
+  utils._each(args, ({auctionId, adUnitCode, bidId: requestId}) => {
+    if (auctionMap[auctionId]
+      && auctionMap[auctionId].adUnitCodeToBidderRequestMap
+      && auctionMap[auctionId].adUnitCodeToBidderRequestMap[adUnitCode]
+      && auctionMap[auctionId].adUnitCodeToBidderRequestMap[adUnitCode][requestId]
+    ) {
       auctionMap[auctionId].adUnitCodeToBidderRequestMap[adUnitCode][requestId].timedOut = true;
-    });
+    }
+  });
 }
-
 /**
  *
  * @param {PbAuction} endedAuction
@@ -1082,11 +1086,18 @@ function buildAuctionPayload(auction) {
   function buildBidRequestsPayload(adUnitCodeToBidderRequestMap) {
     return utils._map(adUnitCodeToBidderRequestMap, (bidderRequestMap, adUnitCode) => {
       return utils._map(bidderRequestMap, (bidderRequest) => {
-        let {bidder, source, bids, mediaTypes, timedOut} = bidderRequest;
+        let {bidder, source, bids, mediaTypes, timedOut, userId} = bidderRequest;
         return {
           adUnitCode,
           bidder,
           source,
+          // return an array of objects containing the module name and id
+          userIds: utils._map(userId, (id, module) => {
+            return {
+              module: module,
+              id: getUserId(module, id)};
+          })
+            .filter(({id}) => id),
           hasBidderResponded: Object.keys(bids).length > 0,
           availableAdSizes: getMediaTypeSizes(mediaTypes),
           availableMediaTypes: getMediaTypes(mediaTypes),
@@ -1136,6 +1147,23 @@ function buildAuctionPayload(auction) {
         }
       })
     }).flat();
+  }
+
+  function getUserId(module, idOrIdObject) {
+    let normalizedId;
+
+    switch (module) {
+      case 'digitrustid':
+        normalizedId = utils.deepAccess(idOrIdObject, 'data.id');
+        break;
+      case 'lipb':
+        normalizedId = idOrIdObject.lipbid;
+        break;
+      default:
+        normalizedId = idOrIdObject;
+    }
+
+    return normalizedId;
   }
 
   function getMediaTypeSizes(mediaTypes) {
