@@ -199,7 +199,12 @@ function getPublisherAccountId() {
 function getTestCode() {
   if (analyticsConfig.testCode !== undefined) {
     if (typeof analyticsConfig.testCode === 'string') {
-      return analyticsConfig.testCode;
+      if (analyticsConfig.testCode !== '') {
+        return analyticsConfig.testCode;
+      } else {
+        utils.logError('OX: Invalid testCode. testCode can\'t be empty');
+        return null;
+      }
     } else {
       utils.logError('OX: Invalid datatype for testCode');
       return null;
@@ -745,6 +750,7 @@ adapterManager.registerAnalyticsAdapter({
 
 function prebidAnalyticsEventHandlerV1({eventType, args}) {
   if (!checkInitOptions()) {
+    utils.logError('OX: Incorrect adapter options')
     send(eventType, {}, null);
     return;
   }
