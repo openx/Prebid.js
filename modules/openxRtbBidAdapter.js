@@ -299,3 +299,4 @@ function getDefaultSyncUrl(gdprConsent, uspConsent) {
 
   return `${url}${queryParamStrings.length > 0 ? '?' + queryParamStrings.join('&') : ''}`;
 }
+
