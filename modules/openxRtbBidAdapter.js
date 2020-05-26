@@ -44,7 +44,7 @@ function buildRequests(validBidRequests, bidderRequest) {
     return [];
   }
 
-  const bc = bidderRequest.bids[0].params.bc || bidderConfig;
+  const bc = bidderRequest.bids[0].params.bc || `${bidderConfig}_${bidderVersion}`;
   const delDomain = bidderRequest.bids[0].params.delDomain || null;
   const platformId = bidderRequest.bids[0].params.platform || null;
   const configPageUrl = config.getConfig('pageUrl');
@@ -299,3 +299,4 @@ function getDefaultSyncUrl(gdprConsent, uspConsent) {
 
   return `${url}${queryParamStrings.length > 0 ? '?' + queryParamStrings.join('&') : ''}`;
 }
+
