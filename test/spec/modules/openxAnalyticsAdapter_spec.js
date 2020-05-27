@@ -675,10 +675,10 @@ describe('openx analytics adapter', function() {
 
     const bidTimeoutOpenX = {
       0: {
-      adUnitCode: AD_UNIT_CODE,
-      auctionId: 'test-auction-id',
-      bidId: 'test-openx-request-id'
-    }};
+        adUnitCode: AD_UNIT_CODE,
+        auctionId: 'test-auction-id',
+        bidId: 'test-openx-request-id'
+      }};
 
     const bidTimeoutCloseX = {
       0: {
@@ -922,32 +922,32 @@ describe('openx analytics adapter', function() {
       });
 
       it('should track the bidder', function () {
-        let openxBidder = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
-        let closexBidder = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
+        let openxBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
+        let closexBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
 
         expect(openxBidder.bidder).to.equal('openx');
         expect(closexBidder.bidder).to.equal('closex');
       });
 
       it('should track the adunit code', function () {
-        let openxBidder = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
-        let closexBidder = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
+        let openxBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
+        let closexBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
 
         expect(openxBidder.adUnitCode).to.equal(AD_UNIT_CODE);
         expect(closexBidder.adUnitCode).to.equal(AD_UNIT_CODE);
       });
 
       it('should track the user ids', function () {
-        let openxBidder = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
-        let closexBidder = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
+        let openxBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
+        let closexBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
 
         expect(openxBidder.userIds).to.deep.include({module: 'tdid', id: bidRequestedOpenX.bids[0].userId.tdid});
         expect(closexBidder.userIds).to.deep.include({module: 'tdid', id: bidRequestedCloseX.bids[0].userId.tdid});
       });
 
       it('should not have responded', function () {
-        let openxBidder = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
-        let closexBidder = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
+        let openxBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
+        let closexBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
 
         expect(openxBidder.hasBidderResponded).to.equal(false);
         expect(closexBidder.hasBidderResponded).to.equal(false);
@@ -973,8 +973,8 @@ describe('openx analytics adapter', function() {
         clock.tick(SLOT_LOAD_WAIT_TIME * 2);
         auction = JSON.parse(server.requests[0].requestBody)[0];
 
-        openxBidRequest = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
-        closexBidRequest = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
+        openxBidRequest = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
+        closexBidRequest = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
       });
 
       afterEach(function () {
@@ -1008,8 +1008,8 @@ describe('openx analytics adapter', function() {
         clock.tick(SLOT_LOAD_WAIT_TIME * 2);
         auction = JSON.parse(server.requests[0].requestBody)[0];
 
-        openxBidResponse = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx').bidResponses[0];
-        closexBidResponse = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex').bidResponses[0];
+        openxBidResponse = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx').bidResponses[0];
+        closexBidResponse = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex').bidResponses[0];
       });
 
       afterEach(function () {
@@ -1104,13 +1104,25 @@ describe('openx analytics adapter', function() {
       });
 
       it('should track that bidder as the winner', function () {
-        let openxBidder = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
+        let openxBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
         expect(openxBidder.bidResponses[0]).to.contain({winner: true});
       });
 
       it('should track that bidder as the losers', function () {
-        let closexBidder = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
+        let closexBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
         expect(closexBidder.bidResponses[0]).to.contain({winner: false});
+      });
+
+      it('should calculate the incremental lift for winning bids', function () {
+        let openxBidderResponse = auction.adUnits[0].bidRequests
+          .find(bidderRequest => bidderRequest.bidder === 'openx')
+          .bidResponses[0];
+
+        let closexBidderResponse = auction.adUnits[0].bidRequests
+          .find(bidderRequest => bidderRequest.bidder === 'closex')
+          .bidResponses[0];
+
+        expect(auction.adUnits[0].incrementalLiftMicroCpmUSD).to.equal(openxBidderResponse.microCpm - closexBidderResponse.microCpm);
       });
     });
 
@@ -1145,12 +1157,12 @@ describe('openx analytics adapter', function() {
       });
 
       it('should track that winning bid rendered', function () {
-        let openxBidder = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
+        let openxBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
         expect(openxBidder.bidResponses[0]).to.contain({rendered: true});
       });
 
       it('should track that winning bid render time', function () {
-        let openxBidder = auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
+        let openxBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
         expect(openxBidder.bidResponses[0]).to.contain({renderTime: CURRENT_TIME});
       });
 
@@ -1386,7 +1398,7 @@ describe('openx analytics adapter', function() {
 
         expect(bidWonEventInfoList.length).to.equal(1);
 
-        let openxBidder = v2Auction.bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
+        let openxBidder = v2Auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
         expect(openxBidder.bidResponses[0]).to.contain({winner: true});
       });
     });
