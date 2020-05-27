@@ -1,4 +1,4 @@
-import includes from 'core-js/library/fn/array/includes.js';
+import includes from 'core-js-pure/features/array/includes.js';
 import adapter from '../src/AnalyticsAdapter.js';
 import CONSTANTS from '../src/constants.json';
 import adapterManager from '../src/adapterManager.js';
@@ -1080,24 +1080,19 @@ function buildAuctionPayload(auction) {
     deviceOSType: detectOS(),
     browser: detectBrowser(),
     testCode: analyticsConfig.testCode,
-    bidRequests: buildBidRequestsPayload(adUnitCodeToBidderRequestMap),
+    adUnits: buildBidRequestsPayload(adUnitCodeToBidderRequestMap),
   };
 
   function buildBidRequestsPayload(adUnitCodeToBidderRequestMap) {
     return utils._map(adUnitCodeToBidderRequestMap, (bidderRequestMap, adUnitCode) => {
-      return utils._map(bidderRequestMap, (bidderRequest) => {
+      let bidRequests = utils._map(bidderRequestMap, (bidderRequest) => {
         let {bidder, source, bids, mediaTypes, timedOut, userId} = bidderRequest;
         return {
           adUnitCode,
           bidder,
           source,
           // return an array of objects containing the module name and id
-          userIds: utils._map(userId, (id, module) => {
-            return {
-              module: module,
-              id: getUserId(module, id)};
-          })
-            .filter(({id}) => id),
+          userIds: buildUserIdPayload(userId),
           hasBidderResponded: Object.keys(bids).length > 0,
           availableAdSizes: getMediaTypeSizes(mediaTypes),
           availableMediaTypes: getMediaTypes(mediaTypes),
@@ -1122,7 +1117,7 @@ function buildAuctionPayload(auction) {
               latency,
               winner,
               rendered,
-              renderTime,
+              renderTime
             } = bidderBidResponse;
 
             return {
@@ -1141,12 +1136,56 @@ function buildAuctionPayload(auction) {
               ts,
               rendered,
               renderTime,
-              meta,
+              meta
             }
           })
         }
-      })
+      });
+
+      return {
+        code: adUnitCode,
+        incrementalLiftMicroCpmUSD: calculateIncrementalLift(bidRequests),
+        bidRequests
+      };
+
+      function buildUserIdPayload(userId) {
+        return utils._map(userId, (id, module) => {
+          return {
+            module: module,
+            id: getUserId(module, id)
+          };
+        })
+          .filter(({id}) => id)
+      }
     }).flat();
+  }
+
+  function calculateIncrementalLift(bidRequests) {
+    let bidResponses = bidRequests.flatMap(bidRequest => bidRequest.bidResponses);
+    let [winningBidResponses, losingBidResponses] = partitionByWinningResponses(bidResponses);
+    let loserWithHigestCpm;
+
+
+    if(winningBidResponses.length === 0) {
+      return 0;
+    }
+
+    loserWithHigestCpm = losingBidResponses.reduce((bidResponseWithHighestCpm, bidResponse) => {
+      if(!bidResponseWithHighestCpm){
+        return bidResponse
+      } else {
+        return bidResponse.microCpm > bidResponseWithHighestCpm.microCpm ? bidResponse : bidResponseWithHighestCpm;
+      }
+    }, {microCpm: 0});
+
+    return (winningBidResponses[0].microCpm - loserWithHigestCpm.microCpm);
+
+    function partitionByWinningResponses(bidResponses){
+      return bidResponses.reduce(([winners, losers], bidResponse) => {
+        bidResponse.winner ? winners.push(bidResponse) : losers.push(bidResponse);
+        return [winners, losers];
+      }, [[],[]]);
+    }
   }
 
   function getUserId(module, idOrIdObject) {
