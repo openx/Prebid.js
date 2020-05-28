@@ -1112,18 +1112,6 @@ describe('openx analytics adapter', function() {
         let closexBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
         expect(closexBidder.bidResponses[0]).to.contain({winner: false});
       });
-
-      it('should calculate the incremental lift for winning bids', function () {
-        let openxBidderResponse = auction.adUnits[0].bidRequests
-          .find(bidderRequest => bidderRequest.bidder === 'openx')
-          .bidResponses[0];
-
-        let closexBidderResponse = auction.adUnits[0].bidRequests
-          .find(bidderRequest => bidderRequest.bidder === 'closex')
-          .bidResponses[0];
-
-        expect(auction.adUnits[0].incrementalLiftMicroCpmUSD).to.equal(openxBidderResponse.microCpm - closexBidderResponse.microCpm);
-      });
     });
 
     describe('when a winning bid renders', function () {
