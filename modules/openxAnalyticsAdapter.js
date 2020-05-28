@@ -1144,7 +1144,6 @@ function buildAuctionPayload(auction) {
 
       return {
         code: adUnitCode,
-        incrementalLiftMicroCpmUSD: calculateIncrementalLift(bidRequests),
         bidRequests
       };
 
@@ -1158,34 +1157,6 @@ function buildAuctionPayload(auction) {
           .filter(({id}) => id)
       }
     }).flat();
-  }
-
-  function calculateIncrementalLift(bidRequests) {
-    let bidResponses = bidRequests.flatMap(bidRequest => bidRequest.bidResponses);
-    let [winningBidResponses, losingBidResponses] = partitionByWinningResponses(bidResponses);
-    let loserWithHigestCpm;
-
-
-    if(winningBidResponses.length === 0) {
-      return 0;
-    }
-
-    loserWithHigestCpm = losingBidResponses.reduce((bidResponseWithHighestCpm, bidResponse) => {
-      if(!bidResponseWithHighestCpm){
-        return bidResponse
-      } else {
-        return bidResponse.microCpm > bidResponseWithHighestCpm.microCpm ? bidResponse : bidResponseWithHighestCpm;
-      }
-    }, {microCpm: 0});
-
-    return (winningBidResponses[0].microCpm - loserWithHigestCpm.microCpm);
-
-    function partitionByWinningResponses(bidResponses){
-      return bidResponses.reduce(([winners, losers], bidResponse) => {
-        bidResponse.winner ? winners.push(bidResponse) : losers.push(bidResponse);
-        return [winners, losers];
-      }, [[],[]]);
-    }
   }
 
   function getUserId(module, idOrIdObject) {
