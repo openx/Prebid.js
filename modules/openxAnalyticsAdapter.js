@@ -870,8 +870,12 @@ function onAuctionInit({auctionId, timestamp: startTime, timeout, adUnitCodes}) 
   };
 
   // setup adunit properties in map
-  auctionMap[auctionId].adUnitCodeToBidderRequestMap = adUnitCodes.reduce((obj, adunitCode) => {
-    obj[adunitCode] = {};
+  auctionMap[auctionId].adUnitCodeToAdUnitMap = adUnitCodes.reduce((obj, adunitCode) => {
+    obj[adunitCode] = {
+      code: adunitCode,
+      adPosition: void (0),
+      bidRequestsMap: {}
+    };
     return obj;
   }, {});
 
@@ -882,12 +886,12 @@ function onAuctionInit({auctionId, timestamp: startTime, timeout, adUnitCodes}) 
 function onBidRequested(bidRequest) {
   const {auctionId, auctionStart, refererInfo, bids: bidderRequests, start} = bidRequest;
   const auction = auctionMap[auctionId];
-  const adUnitCodeToBidderRequestMap = auction.adUnitCodeToBidderRequestMap;
+  const adUnitCodeToAdUnitMap = auction.adUnitCodeToAdUnitMap;
 
   bidderRequests.forEach(bidderRequest => {
     const { adUnitCode, bidder, bidId: requestId, mediaTypes, params, src, userId } = bidderRequest;
 
-    adUnitCodeToBidderRequestMap[adUnitCode][requestId] = {
+    adUnitCodeToAdUnitMap[adUnitCode].bidRequestsMap[requestId] = {
       bidder,
       params,
       mediaTypes,
@@ -928,7 +932,7 @@ function onBidResponse(bidResponse) {
     meta
   } = bidResponse;
 
-  auctionMap[auctionId].adUnitCodeToBidderRequestMap[adUnitCode][requestId].bids[adId] = {
+  auctionMap[auctionId].adUnitCodeToAdUnitMap[adUnitCode].bidRequestsMap[requestId].bids[adId] = {
     cpm,
     creativeId,
     requestTimestamp,
@@ -954,12 +958,12 @@ function onBidResponse(bidResponse) {
 
 function onBidTimeout(args) {
   utils._each(args, ({auctionId, adUnitCode, bidId: requestId}) => {
-    if (auctionMap[auctionId]
-      && auctionMap[auctionId].adUnitCodeToBidderRequestMap
-      && auctionMap[auctionId].adUnitCodeToBidderRequestMap[adUnitCode]
-      && auctionMap[auctionId].adUnitCodeToBidderRequestMap[adUnitCode][requestId]
+    if (auctionMap[auctionId] &&
+      auctionMap[auctionId].adUnitCodeToAdUnitMap &&
+      auctionMap[auctionId].adUnitCodeToAdUnitMap[adUnitCode] &&
+      auctionMap[auctionId].adUnitCodeToAdUnitMap[adUnitCode].bidRequestsMap[requestId]
     ) {
-      auctionMap[auctionId].adUnitCodeToBidderRequestMap[adUnitCode][requestId].timedOut = true;
+      auctionMap[auctionId].adUnitCodeToAdUnitMap[adUnitCode].bidRequestsMap[requestId].timedOut = true;
     }
   });
 }
@@ -986,7 +990,14 @@ function onAuctionEnd(endedAuction) {
  */
 function onBidWon(bidResponse) {
   const { auctionId, adUnitCode, requestId, adId } = bidResponse;
-  auctionMap[auctionId].adUnitCodeToBidderRequestMap[adUnitCode][requestId].bids[adId].winner = true;
+  if (auctionMap[auctionId] &&
+    auctionMap[auctionId].adUnitCodeToAdUnitMap &&
+    auctionMap[auctionId].adUnitCodeToAdUnitMap[adUnitCode] &&
+    auctionMap[auctionId].adUnitCodeToAdUnitMap[adUnitCode].bidRequestsMap[requestId] &&
+    auctionMap[auctionId].adUnitCodeToAdUnitMap[adUnitCode].bidRequestsMap[requestId].bids[adId]
+  ) {
+    auctionMap[auctionId].adUnitCodeToAdUnitMap[adUnitCode].bidRequestsMap[requestId].bids[adId].winner = true;
+  }
 }
 
 /**
@@ -1053,7 +1064,11 @@ function getAuctionByGoogleTagSLot(slot) {
   let slotAuction;
 
   utils._each(auctionMap, auction => {
-    utils._each(auction.adUnitCodeToBidderRequestMap, (bidderRequestIdMap, adUnitCode) => {
+    if (auction.state === AUCTION_STATES.COMPLETED) {
+      return;
+    }
+
+    utils._each(auction.adUnitCodeToAdUnitMap, (bidderRequestIdMap, adUnitCode) => {
       if (slotAdunitCodes.includes(adUnitCode)) {
         slotAuction = auction;
       }
@@ -1064,7 +1079,7 @@ function getAuctionByGoogleTagSLot(slot) {
 }
 
 function buildAuctionPayload(auction) {
-  let {startTime, endTime, state, timeout, auctionOrder, adUnitCodeToBidderRequestMap} = auction;
+  let {startTime, endTime, state, timeout, auctionOrder, adUnitCodeToAdUnitMap} = auction;
   let {publisherPlatformId, publisherAccountId, campaign} = analyticsConfig;
 
   return {
@@ -1080,72 +1095,76 @@ function buildAuctionPayload(auction) {
     deviceOSType: detectOS(),
     browser: detectBrowser(),
     testCode: analyticsConfig.testCode,
-    adUnits: buildBidRequestsPayload(adUnitCodeToBidderRequestMap),
+    adUnits: buildAdUnitsPayload(adUnitCodeToAdUnitMap),
   };
 
-  function buildBidRequestsPayload(adUnitCodeToBidderRequestMap) {
-    return utils._map(adUnitCodeToBidderRequestMap, (bidderRequestMap, adUnitCode) => {
-      let bidRequests = utils._map(bidderRequestMap, (bidderRequest) => {
-        let {bidder, source, bids, mediaTypes, timedOut, userId} = bidderRequest;
-        return {
-          adUnitCode,
-          bidder,
-          source,
-          // return an array of objects containing the module name and id
-          userIds: buildUserIdPayload(userId),
-          hasBidderResponded: Object.keys(bids).length > 0,
-          availableAdSizes: getMediaTypeSizes(mediaTypes),
-          availableMediaTypes: getMediaTypes(mediaTypes),
-          timedOut,
-          bidResponses: utils._map(bidderRequest.bids, (bidderBidResponse) => {
-            let {
-              cpm,
-              creativeId,
-              responseTimestamp,
-              ts,
-              adId,
-              meta,
-              mediaType,
-              dealId,
-              ttl,
-              netRevenue,
-              currency,
-              originalCpm,
-              originalCurrency,
-              width,
-              height,
-              latency,
-              winner,
-              rendered,
-              renderTime
-            } = bidderBidResponse;
-
-            return {
-              microCpm: cpm * 1000,
-              netRevenue,
-              currency,
-              mediaType,
-              height,
-              width,
-              size: `${width}x${height}`,
-              dealId,
-              latency,
-              ttl,
-              winner,
-              creativeId,
-              ts,
-              rendered,
-              renderTime,
-              meta
-            }
-          })
-        }
-      });
+  function buildAdUnitsPayload(adUnitCodeToAdUnitMap) {
+    return utils._map(adUnitCodeToAdUnitMap, (adUnit) => {
+      let {code, adPosition} = adUnit;
 
       return {
-        code: adUnitCode,
-        bidRequests
+        code,
+        adPosition,
+        bidRequests: buildBidRequestPayload(adUnit.bidRequestsMap)
       };
+
+      function buildBidRequestPayload(bidRequestsMap) {
+        return utils._map(bidRequestsMap, (bidRequest) => {
+          let {bidder, source, bids, mediaTypes, timedOut, userId} = bidRequest;
+          return {
+            bidder,
+            source,
+            // return an array of objects containing the module name and id
+            userIds: buildUserIdPayload(userId),
+            hasBidderResponded: Object.keys(bids).length > 0,
+            availableAdSizes: getMediaTypeSizes(mediaTypes),
+            availableMediaTypes: getMediaTypes(mediaTypes),
+            timedOut,
+            bidResponses: utils._map(bidRequest.bids, (bidderBidResponse) => {
+              let {
+                cpm,
+                creativeId,
+                responseTimestamp,
+                ts,
+                adId,
+                meta,
+                mediaType,
+                dealId,
+                ttl,
+                netRevenue,
+                currency,
+                originalCpm,
+                originalCurrency,
+                width,
+                height,
+                latency,
+                winner,
+                rendered,
+                renderTime
+              } = bidderBidResponse;
+
+              return {
+                microCpm: cpm * 1000,
+                netRevenue,
+                currency,
+                mediaType,
+                height,
+                width,
+                size: `${width}x${height}`,
+                dealId,
+                latency,
+                ttl,
+                winner,
+                creativeId,
+                ts,
+                rendered,
+                renderTime,
+                meta
+              }
+            })
+          }
+        });
+      }
 
       function buildUserIdPayload(userId) {
         return utils._map(userId, (id, module) => {
@@ -1191,8 +1210,8 @@ function buildAuctionPayload(auction) {
 function getAdUnitByAuctionAndAdId(auction, adId) {
   let adunit;
 
-  utils._each(auction.adUnitCodeToBidderRequestMap, (bidderRequestIdMap) => {
-    utils._each(bidderRequestIdMap, bidderRequest => {
+  utils._each(auction.adUnitCodeToAdUnitMap, (bidderRequestIdMap) => {
+    utils._each(bidderRequestIdMap.bidRequestsMap, bidderRequest => {
       utils._each(bidderRequest.bids, (bid, bidId) => {
         if (bidId === adId) {
           adunit = bid;
