@@ -361,7 +361,8 @@ function onSlotLoaded({ slot }) {
 
   let allSlotsLoaded = false;
   if (auctionId) {
-    let adPosition = getAdPositionByElementId(slotElementId);
+    let {x, y} = getPageOffset();
+    let adPosition = isAtf(slotElementId, x, y) ? 'ATF' : 'BTF';
     updateLoadedAdSlotsInfo(auctionId, adUnitCode, adPosition);
     let loadedAdUnitCodes = getLoadedAdUnitCodes(auctionId);
     let allAdUnitCodes = getAllAdUnitCodesByAuctionId(auctionId);
@@ -474,7 +475,7 @@ function buildCampaignFromUtmCodes() {
 
   utmTags.forEach(function(utmKey) {
     let utmValue = queryParams[utmKey];
-    if(utmValue){
+    if (utmValue) {
       let key = UTM_TO_CAMPAIGN_PROPERTIES[utmKey];
       campaign[key] = utmValue;
     }
@@ -704,9 +705,9 @@ function pushAdPositionData(auctionId) {
   }
 }
 
-function getAdPositionByElementId(elementId) {
+function isAtf(elementId, scrollLeft = 0, scrollTop = 0) {
   let elem = document.querySelector('#' + elementId);
-  let adPosition;
+  let isInView = false;
   if (elem) {
     let bounding = elem.getBoundingClientRect();
     if (bounding) {
@@ -714,10 +715,10 @@ function getAdPositionByElementId(elementId) {
       let windowHeight = (window.innerHeight || document.documentElement.clientHeight);
 
       // intersection coordinates
-      let left = Math.max(0, bounding.left);
-      let right = Math.min(windowWidth, bounding.right);
-      let bottom = Math.min(windowHeight, bounding.bottom);
-      let top = Math.max(0, bounding.top);
+      let left = Math.max(0, bounding.left + scrollLeft);
+      let right = Math.min(windowWidth, bounding.right + scrollLeft);
+      let top = Math.max(0, bounding.top + scrollTop);
+      let bottom = Math.min(windowHeight, bounding.bottom + scrollTop);
 
       let intersectionWidth = right - left;
       let intersectionHeight = bottom - top;
@@ -727,13 +728,13 @@ function getAdPositionByElementId(elementId) {
 
       if (adSlotArea > 0) {
         // Atleast 50% of intersection in window
-        adPosition = (intersectionArea * 2 >= adSlotArea) ? 'ATF' : 'BTF';
+        isInView = intersectionArea * 2 >= adSlotArea;
       }
     }
   } else {
     utils.logWarn('OX: DOM element not for id ' + elementId);
   }
-  return adPosition;
+  return isInView;
 }
 
 openxAdapter.slotOnLoad = onSlotLoaded;
@@ -860,7 +861,7 @@ function onAuctionInit({auctionId, timestamp: startTime, timeout, adUnitCodes}) 
   auctionMap[auctionId] = {
     id: auctionId,
     startTime,
-    endTime: void(0),
+    endTime: void (0),
     timeout,
     auctionOrder,
     adUnitCodesCount: adUnitCodes.length,
@@ -1007,10 +1008,18 @@ function onBidWon(bidResponse) {
  */
 function onSlotLoadedV2({ slot }) {
   const renderTime = Date.now();
-  const auction = getAuctionByGoogleTagSLot(slot);
+  const elementId = slot.getSlotElementId();
+  const bidId = slot.getTargeting('hb_adid')[0];
+
+  let [auction, adUnit, bid] = getPathToBidResponseByBidId(bidId);
 
   if (!auction) {
-    return; // slot is not participating in a prebid auction
+    // attempt to get auction by adUnitCode
+    auction = getAuctionByGoogleTagSLot(slot);
+
+    if (!auction) {
+      return; // slot is not participating in an active prebid auction
+    }
   }
 
   clearAuctionTimer(auction);
@@ -1019,12 +1028,11 @@ function onSlotLoadedV2({ slot }) {
   auction.adunitCodesRenderedCount++;
 
   // mark adunit as rendered
-  const adId = slot.getTargeting('hb_adid')[0];
-  const adUnit = getAdUnitByAuctionAndAdId(auction, adId);
-
-  if (adUnit) {
-    adUnit.rendered = true;
-    adUnit.renderTime = renderTime;
+  if (bid) {
+    let {x, y} = getPageOffset();
+    bid.rendered = true;
+    bid.renderTime = renderTime;
+    adUnit.adPosition = isAtf(elementId, x, y) ? 'ATF' : 'BTF';
   }
 
   if (auction.adunitCodesRenderedCount === auction.adUnitCodesCount) {
@@ -1034,6 +1042,18 @@ function onSlotLoadedV2({ slot }) {
   // prepare to send regardless if auction is complete or not as a failsafe in case not all events are tracked
   // add additional padding when not all slots are rendered
   delayedSend(auction);
+}
+
+// backwards compatible pageOffset from https://developer.mozilla.org/en-US/docs/Web/API/Window/scrollX
+function getPageOffset() {
+  var x = (window.pageXOffset !== undefined)
+    ? window.pageXOffset
+    : (document.documentElement || document.body.parentNode || document.body).scrollLeft;
+
+  var y = (window.pageYOffset !== undefined)
+    ? window.pageYOffset
+    : (document.documentElement || document.body.parentNode || document.body).scrollTop;
+  return {x, y};
 }
 
 function delayedSend(auction) {
@@ -1057,6 +1077,41 @@ function clearAuctionTimer(auction) {
     clearTimeout(auction.auctionSendDelayTimer);
     auction.auctionSendDelayTimer = void (0);
   }
+}
+
+/**
+ * Returns the path to a bid (auction, adunit, bidRequest, and bid) based on a bidId
+ * @param {string} bidId
+ * @returns {Array<*>}
+ */
+function getPathToBidResponseByBidId(bidId) {
+  let auction;
+  let adUnit;
+  let bidResponse;
+
+  if (!bidId) {
+    return [];
+  }
+
+  utils._each(auctionMap, currentAuction => {
+    // skip completed auctions
+    if (currentAuction.state === AUCTION_STATES.COMPLETED) {
+      return;
+    }
+
+    utils._each(currentAuction.adUnitCodeToAdUnitMap, (currentAdunit) => {
+      utils._each(currentAdunit.bidRequestsMap, currentBiddRequest => {
+        utils._each(currentBiddRequest.bids, (currentBidResponse, bidResponseId) => {
+          if (bidId === bidResponseId) {
+            auction = currentAuction;
+            adUnit = currentAdunit;
+            bidResponse = currentBidResponse;
+          }
+        });
+      });
+    });
+  });
+  return [auction, adUnit, bidResponse];
 }
 
 function getAuctionByGoogleTagSLot(slot) {
@@ -1292,15 +1347,15 @@ openxAdapter.reset = function() {
 /**
  * @typedef {Object} BidResponseMeta
  * @property {string} [networkId] Bidder-specific Network/DSP Id
- * @property {string} [networkName] - Network/DSP Name. example:	"NetworkN"
- * @property {string} [agencyId] - Bidder-specific Agency ID. example:	2222
- * @property {string} [agencyName] - Agency Name. example:	"Agency, Inc."
- * @property {string} [advertiserId] - Bidder-specific Advertiser ID. example:	3333
- * @property {string} [advertiserName] - Advertiser Name. example:	"AdvertiserA"
+ * @property {string} [networkName] - Network/DSP Name. example: "NetworkN"
+ * @property {string} [agencyId] - Bidder-specific Agency ID. example: 2222
+ * @property {string} [agencyName] - Agency Name. example: "Agency, Inc."
+ * @property {string} [advertiserId] - Bidder-specific Advertiser ID. example: 3333
+ * @property {string} [advertiserName] - Advertiser Name. example: "AdvertiserA"
  * @property {Array<string>} [advertiserDomains] - Array of Advertiser Domains for the landing page(s). This is an array
- *                                             to align with the OpenRTB ‘adomain’ field.. example:	["advertisera.com"]
- * @property {string} [brandId] - Bidder-specific Brand ID (some advertisers may have many brands). example:	4444
- * @property {string} [brandName] - Brand Name. example:	"BrandB"
- * @property {string} [primaryCatId] - Primary IAB category ID. example:	"IAB-111"
- * @property {Array<string>} [secondaryCatIds] - Array of secondary IAB category IDs. example:	["IAB-222","IAB-333"]
+ *                                             to align with the OpenRTB ‘adomain’ field.. example: ["advertisera.com"]
+ * @property {string} [brandId] - Bidder-specific Brand ID (some advertisers may have many brands). example: 4444
+ * @property {string} [brandName] - Brand Name. example: "BrandB"
+ * @property {string} [primaryCatId] - Primary IAB category ID. example: "IAB-111"
+ * @property {Array<string>} [secondaryCatIds] - Array of secondary IAB category IDs. example: ["IAB-222","IAB-333"]
  */
