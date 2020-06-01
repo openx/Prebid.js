@@ -771,7 +771,7 @@ describe('openx analytics adapter', function() {
         ]);
 
         simulateAuction([
-          [AUCTION_INIT, {...auctionInit, auctionId: 'second-auction-id'} ],
+          [AUCTION_INIT, {...auctionInit, auctionId: 'second-auction-id'}],
           [SLOT_LOADED]
         ]);
 
@@ -930,11 +930,7 @@ describe('openx analytics adapter', function() {
       });
 
       it('should track the adunit code', function () {
-        let openxBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
-        let closexBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
-
-        expect(openxBidder.adUnitCode).to.equal(AD_UNIT_CODE);
-        expect(closexBidder.adUnitCode).to.equal(AD_UNIT_CODE);
+        expect(auction.adUnits[0].code).to.equal(AD_UNIT_CODE);
       });
 
       it('should track the user ids', function () {
