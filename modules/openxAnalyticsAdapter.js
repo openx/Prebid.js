@@ -5,7 +5,6 @@ import adapterManager from '../src/adapterManager.js';
 
 //* *******  V2 Code
 import { ajax } from '../src/ajax.js';
-import {getWindowLocation, parseQS} from '../src/utils';
 
 // temp dependency on zlib to minimize payload
 const zlib = require('zlib');  // eslint-disable-line
@@ -21,7 +20,6 @@ const SCHEMA_VERSION = '0.1';
 const MAX_RETRIES = 2;
 const MAX_TIMEOUT = 10000;
 const AUCTION_END_WAIT_TIME = 1000;
-const DEFAULT_SLOT_LOAD_BUFFER_TIME = 100;
 
 const auctionInitConst = CONSTANTS.EVENTS.AUCTION_INIT;
 const auctionEndConst = CONSTANTS.EVENTS.AUCTION_END;
@@ -90,22 +88,9 @@ const UTM_TO_CAMPAIGN_PROPERTIES = {
   'utm_term': 'term',
   'utm_content': 'content'
 };
-let utmTimeoutKey = 'utm_timeout';
-let utmTimeout = 60 * 60 * 1000;
 let sessionTimeout = 60 * 60 * 1000;
 let sessionIdStorageKey = 'session_id';
 let sessionTimeoutKey = 'session_timeout';
-
-function getParameterByName(param) {
-  let vars = {};
-  window.location.href
-    .replace(location.hash, '')
-    .replace(/[?&]+([^=&]+)=?([^&]*)?/gi, function(m, key, value) {
-      vars[key] = value !== undefined ? value : '';
-    });
-
-  return vars[param] ? vars[param] : '';
-}
 
 function buildSessionIdLocalStorageKey() {
   return localStoragePrefix.concat(sessionIdStorageKey);
@@ -139,23 +124,6 @@ function getSessionId() {
   return localStorage.getItem(buildSessionIdLocalStorageKey())
     ? localStorage.getItem(buildSessionIdLocalStorageKey())
     : '';
-}
-
-function updateUtmTimeout() {
-  localStorage.setItem(buildUtmLocalStorageTimeoutKey(), Date.now());
-}
-
-function isUtmTimeoutExpired() {
-  let utmTimestamp = localStorage.getItem(buildUtmLocalStorageTimeoutKey());
-  return Date.now() - utmTimestamp > utmTimeout;
-}
-
-function buildUtmLocalStorageTimeoutKey() {
-  return localStoragePrefix.concat(utmTimeoutKey);
-}
-
-function buildUtmLocalStorageKey(utmMarkKey) {
-  return localStoragePrefix.concat(utmMarkKey);
 }
 
 function getPublisherPlatformId() {
@@ -453,6 +421,7 @@ openxAdapter.enableAnalytics = function(adapterConfig = {options: {}}) {
       // if required, the property has to exist
       // if property exists, type check value
       return (required && !analyticsOptions.hasOwnProperty(property)) ||
+        /* eslint-disable valid-typeof */
         (analyticsOptions.hasOwnProperty(property) && typeof analyticsOptions[property] !== type);
     });
     if (failedValidation) {
@@ -685,7 +654,7 @@ function getLoadedAdUnitCodes(auctionId) {
 }
 
 function pushAdPositionData(auctionId) {
-  if (auctionId && eventStack?.[auctionId]?.events) {
+  if (auctionId && eventStack && eventStack[auctionId] && eventStack[auctionId].events) {
     let adUnitPositionMap = loadedAdSlots[auctionId];
     if (adUnitPositionMap && JSON.stringify(adUnitPositionMap) !== '{}') {
       eventStack[auctionId].events.filter(function(event) {
@@ -707,7 +676,7 @@ function pushAdPositionData(auctionId) {
 
 function isAtf(elementId, scrollLeft = 0, scrollTop = 0) {
   let elem = document.querySelector('#' + elementId);
-  let isInView = false;
+  let isAtf = false;
   if (elem) {
     let bounding = elem.getBoundingClientRect();
     if (bounding) {
@@ -728,13 +697,13 @@ function isAtf(elementId, scrollLeft = 0, scrollTop = 0) {
 
       if (adSlotArea > 0) {
         // Atleast 50% of intersection in window
-        isInView = intersectionArea * 2 >= adSlotArea;
+        isAtf = intersectionArea * 2 >= adSlotArea;
       }
     }
   } else {
     utils.logWarn('OX: DOM element not for id ' + elementId);
   }
-  return isInView;
+  return isAtf;
 }
 
 openxAdapter.slotOnLoad = onSlotLoaded;
@@ -883,9 +852,33 @@ function onAuctionInit({auctionId, timestamp: startTime, timeout, adUnitCodes}) 
   auctionOrder++;
 }
 
-// TODO: type BidRequest
+/**
+ * @typedef {Object} PbBidRequest
+ * @property {string} auctionId - Auction ID of the request this bid responded to
+ * @property {number} auctionStart //: 1586675964364
+ * @property {Object} refererInfo
+ * @property {PbBidderRequest} bids
+ * @property {number} start - Start timestamp of the bidder request
+ *
+ */
+
+/**
+ * @typedef {Object} PbBidderRequest
+ * @property {string} adUnitCode - Name of div or google adunit path
+ * @property {string} bidder - Bame of bidder
+ * @property {string} bidId - Identifies the bid request
+ * @property {Object} mediaTypes
+ * @property {Object} params
+ * @property {string} src
+ * @property {Object} userId - Map of userId module to module object
+ */
+
+/**
+ * Tracks the bid request
+ * @param {PbBidRequest} bidRequest
+ */
 function onBidRequested(bidRequest) {
-  const {auctionId, auctionStart, refererInfo, bids: bidderRequests, start} = bidRequest;
+  const {auctionId, bids: bidderRequests, start} = bidRequest;
   const auction = auctionMap[auctionId];
   const adUnitCodeToAdUnitMap = auction.adUnitCodeToAdUnitMap;
 
@@ -1179,17 +1172,13 @@ function buildAuctionPayload(auction) {
               let {
                 cpm,
                 creativeId,
-                responseTimestamp,
                 ts,
-                adId,
                 meta,
                 mediaType,
                 dealId,
                 ttl,
                 netRevenue,
                 currency,
-                originalCpm,
-                originalCurrency,
                 width,
                 height,
                 latency,
@@ -1230,7 +1219,7 @@ function buildAuctionPayload(auction) {
         })
           .filter(({id}) => id)
       }
-    }).flat();
+    });
   }
 
   function getUserId(module, idOrIdObject) {
@@ -1260,22 +1249,6 @@ function buildAuctionPayload(auction) {
   function getMediaTypes(mediaTypes) {
     return utils._map(mediaTypes, (mediaTypeConfig, mediaType) => mediaType);
   }
-}
-
-function getAdUnitByAuctionAndAdId(auction, adId) {
-  let adunit;
-
-  utils._each(auction.adUnitCodeToAdUnitMap, (bidderRequestIdMap) => {
-    utils._each(bidderRequestIdMap.bidRequestsMap, bidderRequest => {
-      utils._each(bidderRequest.bids, (bid, bidId) => {
-        if (bidId === adId) {
-          adunit = bid;
-        }
-      });
-    });
-  });
-
-  return adunit;
 }
 
 export default Object.assign({
@@ -1320,7 +1293,7 @@ openxAdapter.reset = function() {
  * @property {number} timeToRespond - The amount of time for the bidder to respond with the bid
  * @property {string} adUnitCode - adUnitCode to get the bid responses for
  * @property {number} creativeId - Bidder-specific creative ID
- * @property {string} mediaType - One of: banner, native, video	banner
+ * @property {string} mediaType - One of: banner, native, video banner
  * @property {string} [dealId] - (Optional) If the bid is associated with a Deal, this field contains the deal ID.
  * @property {Object} adserverTargeting - Contains all the adserver targeting parameters
  * @property {string} [ad] - Contains the ad payload for banner ads.
@@ -1329,9 +1302,9 @@ openxAdapter.reset = function() {
  *                                   An impression tracking URL to serve with video Ad
  * @property {string} [vastXml] - XML for VAST document to be cached for later retrieval.
  * @property {Object} [native] - Contains native key value pairs.
- * @property {string} status - Status of the bid. Possible values: targetingSet, rendered	"targetingSet"
- * @property {string} statusMessage - The bid’s status message	“Bid returned empty or error response” or “Bid available”
- * @property {number} ttl - How long (in seconds) this bid is considered valid. See this FAQ entry for more info.	300
+ * @property {string} status - Status of the bid. Possible values: targetingSet, rendered "targetingSet"
+ * @property {string} statusMessage - The bid’s status message “Bid returned empty or error response” or “Bid available”
+ * @property {number} ttl - How long (in seconds) this bid is considered valid. See this FAQ entry for more info. 300
  * @property {string} requestId - Used to tie this bid back to the request
  * @property {string} mediaType - Specifies the type of media type. One of: banner, video, native
  * @property {string} source - Whether this bid response came from a client-side or server side request.  One of: client, server.
