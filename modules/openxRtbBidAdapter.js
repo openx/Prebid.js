@@ -1,7 +1,7 @@
-import { config } from 'src/config';
-import { registerBidder } from '../src/adapters/bidderFactory';
-import {BANNER, VIDEO} from '../src/mediaTypes';
-import * as utils from '../src/utils';
+import { config } from '../src/config.js';
+import { registerBidder } from '../src/adapters/bidderFactory.js';
+import {BANNER, VIDEO} from '../src/mediaTypes.js';
+import * as utils from '../src/utils.js';
 
 const bidderConfig = 'hb_pb_rtb';
 const bidderVersion = '3.x.x';
@@ -24,13 +24,13 @@ registerBidder(spec);
  * @return {boolean}
  */
 function isBidRequestValid(bidRequest) {
-  const hasDelDomainOrPlatform = bidRequest.params.delDomain
-    || bidRequest.params.platform;
+  const hasDelDomainOrPlatform = bidRequest.params.delDomain ||
+    bidRequest.params.platform;
 
-  if (utils.deepAccess(bidRequest, 'mediaTypes.banner')
-      && hasDelDomainOrPlatform) {
-    return !!bidRequest.params.unit
-      || utils.deepAccess(bidRequest, 'mediaTypes.banner.sizes.length') > 0;
+  if (utils.deepAccess(bidRequest, 'mediaTypes.banner') &&
+      hasDelDomainOrPlatform) {
+    return !!bidRequest.params.unit ||
+      utils.deepAccess(bidRequest, 'mediaTypes.banner.sizes.length') > 0;
   }
 
   return !!(bidRequest.params.unit && hasDelDomainOrPlatform);
@@ -53,7 +53,7 @@ function buildRequests(validBidRequests, bidderRequest) {
   const maybeDoNotTrack = () => !window.navigator.doNotTrack
     ? {}
     : {dnt: window.navigator.doNotTrack};
-  const maybePlatformIdOrDelDomain = ((delDomain, platId) => {
+  const maybePlatformIdOrDelDomain = (delDomain, platId) => {
     let fields = {};
     if (platId) {
       fields = {...fields, platformId: platId};
@@ -62,7 +62,7 @@ function buildRequests(validBidRequests, bidderRequest) {
       fields = {...fields, delDomain};
     }
     return fields;
-  });
+  };
 
   // update imp to bid map with current request bids
   impToBidIdMap = validBidRequests.reduce((impMap, bidRequest) => ({
@@ -72,13 +72,13 @@ function buildRequests(validBidRequests, bidderRequest) {
   const data = {
     id: bidderRequest.auctionId,
     cur: ['USD'],
-    at: 1,   // (1: first-price-, 2: second-price-) auction
-    tmax: config.getConfig('bidderTimeout'),  // defaults to 3000msecs
+    at: 1, // (1: first-price-, 2: second-price-) auction
+    tmax: config.getConfig('bidderTimeout'), // defaults to 3000msecs
     site: {
       domain: configPageUrl || utils.getWindowTop().location.hostname,
-      page: configPageUrl
-              || bidderRequest.refererInfo.canonicalUrl
-              || bidderRequest.refererInfo.referer,
+      page: configPageUrl ||
+              bidderRequest.refererInfo.canonicalUrl ||
+              bidderRequest.refererInfo.referer,
       ref: bidderRequest.refererInfo.referer,
     },
     user: getUser(validBidRequests[0].userId, validBidRequests[0].userIdAsEids),
@@ -121,7 +121,7 @@ function getImps(validBidRequests, commonImpFieldsMap) {
   return validBidRequests.map(bidRequest => ({
     id: bidRequest.transactionId,
     tagid: bidRequest.params.unit,
-    bidfloor: bidRequest.params.customFloor || 0,  //default bidfloorcurrency is USD
+    bidfloor: bidRequest.params.customFloor || 0, // default bidfloorcurrency is USD
     ...getBannerImp(bidRequest),
     ...getVideoImp(bidRequest),
     ...maybeImpRegs(commonImpFieldsMap.regs),
@@ -186,7 +186,7 @@ function getCommonImpFieldsMap(bidderRequest, delDomain, platformId) {
 
   const stripNullVals = map =>
     Object.entries(map)
-      .filter(([key, val]) => null !== val)    // filter out null values
+      .filter(([key, val]) => val !== null) // filter out null values
       // convert the rest back to fields
       .reduce((newMap, [key, val]) => ({
         ...newMap,
@@ -232,7 +232,7 @@ function getUser(userIdDataMap, eids) {
     if (!id) {
       return null;
     }
-    return {digitrust: {id, keyv,}};
+    return {digitrust: {id, keyv}};
   }
 }
 
@@ -253,9 +253,9 @@ function interpretResponse(resp, req) {
     height: bid.h,
     creativeId: bid.crid,
     dealId: bid.dealid,
-    currency: respBody.cur || "USD",
-    netRevenue: true,  // true?
-    ttl: oxDefaultBidRespTTLSecs,  // secs before the bid expires and become unusable, from oxBidAdapter
+    currency: respBody.cur || 'USD',
+    netRevenue: true, // true?
+    ttl: oxDefaultBidRespTTLSecs, // secs before the bid expires and become unusable, from oxBidAdapter
     ad: bid.adm,
   }));
 }
@@ -299,4 +299,3 @@ function getDefaultSyncUrl(gdprConsent, uspConsent) {
 
   return `${url}${queryParamStrings.length > 0 ? '?' + queryParamStrings.join('&') : ''}`;
 }
-
