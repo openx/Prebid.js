@@ -1188,7 +1188,7 @@ function buildAuctionPayload(auction) {
               } = bidderBidResponse;
 
               return {
-                microCpm: cpm * 1000,
+                microCpm: cpm * 1000000,
                 netRevenue,
                 currency,
                 mediaType,
