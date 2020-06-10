@@ -1014,8 +1014,8 @@ describe('openx analytics adapter', function() {
       });
 
       it('should track the cpm in microCPM', function () {
-        expect(openxBidResponse.microCpm).to.equal(bidResponseOpenX.cpm * 1000);
-        expect(closexBidResponse.microCpm).to.equal(bidResponseCloseX.cpm * 1000);
+        expect(openxBidResponse.microCpm).to.equal(bidResponseOpenX.cpm * 1000000);
+        expect(closexBidResponse.microCpm).to.equal(bidResponseCloseX.cpm * 1000000);
       });
 
       it('should track if the bid is in net revenue', function () {
