@@ -613,7 +613,12 @@ describe('openx analytics adapter', function() {
           bidder: 'openx',
           params: { unit: 'test-openx-ad-unit-id' },
           userId: {
-            tdid: 'test-tradedesk-id'
+            tdid: 'test-tradedesk-id',
+            empty_id: '',
+            null_id: null,
+            bla_id: '',
+            digitrustid: { data: { id: '1' } },
+            lipbid: { lipb: '2' }
           }
         }
       ],
@@ -630,6 +635,7 @@ describe('openx analytics adapter', function() {
           bidder: 'closex',
           params: { unit: 'test-closex-ad-unit-id' },
           userId: {
+            bla_id: '2',
             tdid: 'test-tradedesk-id'
           }
         }
@@ -935,8 +941,7 @@ describe('openx analytics adapter', function() {
       });
 
       it('should track the user ids', function () {
-        expect(openxBidder.userIds).to.deep.include({module: 'tdid', id: bidRequestedOpenX.bids[0].userId.tdid});
-        expect(closexBidder.userIds).to.deep.include({module: 'tdid', id: bidRequestedCloseX.bids[0].userId.tdid});
+        expect(auction.hasUserData).to.deep.equal(['bla_id', 'digitrustid', 'lipbid', 'tdid']);
       });
 
       it('should not have responded', function () {
@@ -1283,7 +1288,7 @@ describe('openx analytics adapter', function() {
 
     beforeEach(function() {
       sinon.stub(events, 'getEvents').returns([]);
-        // set current time
+      // set current time
       clock = sinon.useFakeTimers(CURRENT_TIME);
     });
 
