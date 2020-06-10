@@ -833,6 +833,7 @@ function onAuctionInit({auctionId, timestamp: startTime, timeout, adUnitCodes}) 
     endTime: void (0),
     timeout,
     auctionOrder,
+    userIds: [],
     adUnitCodesCount: adUnitCodes.length,
     adunitCodesRenderedCount: 0,
     state: AUCTION_STATES.INIT,
@@ -885,12 +886,12 @@ function onBidRequested(bidRequest) {
   bidderRequests.forEach(bidderRequest => {
     const { adUnitCode, bidder, bidId: requestId, mediaTypes, params, src, userId } = bidderRequest;
 
+    auction.userIds.push(userId);
     adUnitCodeToAdUnitMap[adUnitCode].bidRequestsMap[requestId] = {
       bidder,
       params,
       mediaTypes,
       source: src,
-      userId,
       startTime: start,
       timedOut: false,
       bids: {}
@@ -1127,7 +1128,7 @@ function getAuctionByGoogleTagSLot(slot) {
 }
 
 function buildAuctionPayload(auction) {
-  let {startTime, endTime, state, timeout, auctionOrder, adUnitCodeToAdUnitMap} = auction;
+  let {startTime, endTime, state, timeout, auctionOrder, userIds, adUnitCodeToAdUnitMap} = auction;
   let {publisherPlatformId, publisherAccountId, campaign} = analyticsConfig;
 
   return {
@@ -1143,6 +1144,8 @@ function buildAuctionPayload(auction) {
     deviceOSType: detectOS(),
     browser: detectBrowser(),
     testCode: analyticsConfig.testCode,
+    // return an array of module name that have user data
+    hasUserData: buildHasUserDataPayload(userIds),
     adUnits: buildAdUnitsPayload(adUnitCodeToAdUnitMap),
   };
 
@@ -1158,12 +1161,10 @@ function buildAuctionPayload(auction) {
 
       function buildBidRequestPayload(bidRequestsMap) {
         return utils._map(bidRequestsMap, (bidRequest) => {
-          let {bidder, source, bids, mediaTypes, timedOut, userId} = bidRequest;
+          let {bidder, source, bids, mediaTypes, timedOut} = bidRequest;
           return {
             bidder,
             source,
-            // return an array of objects containing the module name and id
-            userIds: buildUserIdPayload(userId),
             hasBidderResponded: Object.keys(bids).length > 0,
             availableAdSizes: getMediaTypeSizes(mediaTypes),
             availableMediaTypes: getMediaTypes(mediaTypes),
@@ -1209,20 +1210,18 @@ function buildAuctionPayload(auction) {
           }
         });
       }
-
-      function buildUserIdPayload(userId) {
-        return utils._map(userId, (id, module) => {
-          return {
-            module: module,
-            id: getUserId(module, id)
-          };
-        })
-          .filter(({id}) => id)
-      }
     });
   }
 
-  function getUserId(module, idOrIdObject) {
+  function buildHasUserDataPayload(userIds) {
+    return utils._map(userIds, (userId) => {
+      return utils._map(userId, (id, module) => {
+        return hasUserData(module, id) ? module : false
+      }).filter(module => module);
+    }).reduce(utils.flatten, []).filter(utils.uniques).sort();
+  }
+
+  function hasUserData(module, idOrIdObject) {
     let normalizedId;
 
     switch (module) {
@@ -1236,7 +1235,7 @@ function buildAuctionPayload(auction) {
         normalizedId = idOrIdObject;
     }
 
-    return normalizedId;
+    return !utils.isEmpty(normalizedId);
   }
 
   function getMediaTypeSizes(mediaTypes) {
