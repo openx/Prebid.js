@@ -14,6 +14,8 @@ const SLOT_LOADED = 'slotOnload';
 const zlib = require('zlib');
 const openxAdapter = openxAdapterParams.adapter;
 
+const CURRENT_TIME = 1586000000000;
+
 describe('openx analytics adapter', function() {
   describe('when validating the configuration', function () {
     let spy;
@@ -56,12 +58,6 @@ describe('openx analytics adapter', function() {
     const SLOT_LOAD_WAIT_TIME = 200;
 
     let clock;
-    before(function () {
-      clock = sinon.useFakeTimers();
-    });
-    after(function () {
-      clock.restore();
-    });
 
     const openxAdUnitInfo = [{'code': 'div-1',
       'mediaTypes': {'banner': {'sizes': [[320, 50]]}},
@@ -214,6 +210,8 @@ describe('openx analytics adapter', function() {
     }
 
     before(function() {
+      clock = sinon.useFakeTimers(CURRENT_TIME);
+
       sinon.stub(events, 'getEvents').returns([]);
       openxAdapter.enableAnalytics({
         provider: 'openx',
@@ -228,6 +226,7 @@ describe('openx analytics adapter', function() {
     });
 
     after(function() {
+      clock.restore();
       events.getEvents.restore();
       openxAdapter.disableAnalytics();
     });
@@ -751,7 +750,7 @@ describe('openx analytics adapter', function() {
 
     beforeEach(function() {
       sinon.stub(events, 'getEvents').returns([]);
-      clock = sinon.useFakeTimers();
+      clock = sinon.useFakeTimers(CURRENT_TIME);
     });
 
     afterEach(function() {
@@ -1071,13 +1070,9 @@ describe('openx analytics adapter', function() {
     });
 
     describe('when there are bidder wins', function () {
-      const CURRENT_TIME = 1586000000000;
       let auction;
       beforeEach(function () {
         openxAdapter.enableAnalytics({options: DEFAULT_V2_ANALYTICS_CONFIG});
-
-        // set current time
-        clock = sinon.useFakeTimers(CURRENT_TIME);
 
         simulateAuction([
           [AUCTION_INIT, auctionInit],
@@ -1094,7 +1089,6 @@ describe('openx analytics adapter', function() {
       });
 
       afterEach(function () {
-        clock.restore();
         openxAdapter.reset();
         openxAdapter.disableAnalytics();
       });
@@ -1111,13 +1105,9 @@ describe('openx analytics adapter', function() {
     });
 
     describe('when a winning bid renders', function () {
-      const CURRENT_TIME = 1586000000000;
       let auction;
       beforeEach(function () {
         openxAdapter.enableAnalytics({options: DEFAULT_V2_ANALYTICS_CONFIG});
-
-        // set current time
-        clock = sinon.useFakeTimers(CURRENT_TIME);
 
         simulateAuction([
           [AUCTION_INIT, auctionInit],
@@ -1135,7 +1125,6 @@ describe('openx analytics adapter', function() {
       });
 
       afterEach(function () {
-        clock.restore();
         openxAdapter.reset();
         openxAdapter.disableAnalytics();
       });
@@ -1298,7 +1287,8 @@ describe('openx analytics adapter', function() {
 
     beforeEach(function() {
       sinon.stub(events, 'getEvents').returns([]);
-      clock = sinon.useFakeTimers();
+        // set current time
+      clock = sinon.useFakeTimers(CURRENT_TIME);
     });
 
     afterEach(function() {
@@ -1307,7 +1297,6 @@ describe('openx analytics adapter', function() {
     });
 
     describe('when are bidder wins', function () {
-      const CURRENT_TIME = 1586000000000;
       let v1Auction;
       let v2Auction;
       beforeEach(function () {
@@ -1320,9 +1309,6 @@ describe('openx analytics adapter', function() {
             payloadWaitTime: SLOT_LOAD_WAIT_TIME
           }
         });
-
-        // set current time
-        clock = sinon.useFakeTimers(CURRENT_TIME);
 
         simulateAuction([
           [AUCTION_INIT, auctionInit],
@@ -1346,7 +1332,6 @@ describe('openx analytics adapter', function() {
       });
 
       afterEach(function () {
-        clock.restore();
         openxAdapter.reset();
         openxAdapter.disableAnalytics();
       });
