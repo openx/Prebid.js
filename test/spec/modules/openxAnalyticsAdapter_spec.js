@@ -598,14 +598,14 @@ describe('openx analytics adapter', function() {
 
     const auctionInit = {
       auctionId: 'test-auction-id',
-      timestamp: 1586000000000,
+      timestamp: CURRENT_TIME,
       timeout: 3000,
       adUnitCodes: [AD_UNIT_CODE],
     };
 
     const bidRequestedOpenX = {
       auctionId: 'test-auction-id',
-      auctionStart: 1586000000000,
+      auctionStart: CURRENT_TIME,
       bids: [
         {
           adUnitCode: AD_UNIT_CODE,
@@ -617,12 +617,12 @@ describe('openx analytics adapter', function() {
           }
         }
       ],
-      start: 1586000000010
+      start: CURRENT_TIME + 10
     };
 
     const bidRequestedCloseX = {
       auctionId: 'test-auction-id',
-      auctionStart: 1586000000000,
+      auctionStart: CURRENT_TIME,
       bids: [
         {
           adUnitCode: AD_UNIT_CODE,
@@ -634,7 +634,7 @@ describe('openx analytics adapter', function() {
           }
         }
       ],
-      start: 1586000000020
+      start: CURRENT_TIME + 20
     };
 
     const bidResponseOpenX = {
@@ -650,7 +650,7 @@ describe('openx analytics adapter', function() {
       creativeId: 'openx-crid',
       currency: 'USD',
       timeToRespond: 100,
-      responseTimestamp: 1586000000030,
+      responseTimestamp: CURRENT_TIME + 30,
       ts: 'test-openx-ts'
     };
 
@@ -668,7 +668,7 @@ describe('openx analytics adapter', function() {
       currency: 'USD',
       timeToRespond: 200,
       dealId: 'test-closex-deal-id',
-      responseTimestamp: 1586000000040,
+      responseTimestamp: CURRENT_TIME + 40,
       ts: 'test-closex-ts'
     };
 
@@ -696,8 +696,8 @@ describe('openx analytics adapter', function() {
 
     const auctionEnd = {
       auctionId: 'test-auction-id',
-      timestamp: 1586000000000,
-      auctionEnd: 1586000000100,
+      timestamp: CURRENT_TIME,
+      auctionEnd: CURRENT_TIME + 100,
       timeout: 3000,
       adUnitCodes: [AD_UNIT_CODE],
     };
@@ -1150,14 +1150,14 @@ describe('openx analytics adapter', function() {
 
     const auctionInit = {
       auctionId: 'test-auction-id',
-      timestamp: 1586000000000,
+      timestamp: CURRENT_TIME,
       timeout: 3000,
       adUnitCodes: [AD_UNIT_CODE],
     };
 
     const bidRequestedOpenX = {
       auctionId: 'test-auction-id',
-      auctionStart: 1586000000000,
+      auctionStart: CURRENT_TIME,
       bids: [
         {
           adUnitCode: AD_UNIT_CODE,
@@ -1166,12 +1166,12 @@ describe('openx analytics adapter', function() {
           params: { unit: 'test-openx-ad-unit-id' },
         }
       ],
-      start: 1586000000010
+      start: CURRENT_TIME + 10
     };
 
     const bidRequestedCloseX = {
       auctionId: 'test-auction-id',
-      auctionStart: 1586000000000,
+      auctionStart: CURRENT_TIME,
       bids: [
         {
           adUnitCode: AD_UNIT_CODE,
@@ -1180,7 +1180,7 @@ describe('openx analytics adapter', function() {
           params: { unit: 'test-closex-ad-unit-id' },
         }
       ],
-      start: 1586000000020
+      start: CURRENT_TIME + 20
     };
 
     const bidResponseOpenX = {
@@ -1196,7 +1196,7 @@ describe('openx analytics adapter', function() {
       creativeId: 'openx-crid',
       currency: 'USD',
       timeToRespond: 100,
-      responseTimestamp: 1586000000030,
+      responseTimestamp: CURRENT_TIME + 30,
       ts: 'test-openx-ts'
     };
 
@@ -1214,7 +1214,7 @@ describe('openx analytics adapter', function() {
       currency: 'USD',
       timeToRespond: 200,
       dealId: 'test-closex-deal-id',
-      responseTimestamp: 1586000000040,
+      responseTimestamp: CURRENT_TIME + 40,
       ts: 'test-closex-ts'
     };
 
@@ -1229,8 +1229,8 @@ describe('openx analytics adapter', function() {
 
     const auctionEnd = {
       'auctionId': 'test-auction-id',
-      'timestamp': 1586000000000,
-      'auctionEnd': 1586000000100,
+      'timestamp': CURRENT_TIME,
+      'auctionEnd': CURRENT_TIME + 100,
       'auctionStatus': 'completed',
       'adUnits': openxAdUnitInfo,
       'adUnitCodes': [
