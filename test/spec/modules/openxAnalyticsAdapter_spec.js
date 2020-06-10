@@ -902,6 +902,9 @@ describe('openx analytics adapter', function() {
 
     describe('when there are bid requests', function () {
       let auction;
+      let openxBidder;
+      let closexBidder;
+
       beforeEach(function () {
         openxAdapter.enableAnalytics({options: DEFAULT_V2_ANALYTICS_CONFIG});
 
@@ -913,6 +916,8 @@ describe('openx analytics adapter', function() {
         ]);
         clock.tick(SLOT_LOAD_WAIT_TIME * 2);
         auction = JSON.parse(server.requests[0].requestBody)[0];
+        openxBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
+        closexBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
       });
 
       afterEach(function () {
@@ -921,9 +926,6 @@ describe('openx analytics adapter', function() {
       });
 
       it('should track the bidder', function () {
-        let openxBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
-        let closexBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
-
         expect(openxBidder.bidder).to.equal('openx');
         expect(closexBidder.bidder).to.equal('closex');
       });
@@ -933,17 +935,11 @@ describe('openx analytics adapter', function() {
       });
 
       it('should track the user ids', function () {
-        let openxBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
-        let closexBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
-
         expect(openxBidder.userIds).to.deep.include({module: 'tdid', id: bidRequestedOpenX.bids[0].userId.tdid});
         expect(closexBidder.userIds).to.deep.include({module: 'tdid', id: bidRequestedCloseX.bids[0].userId.tdid});
       });
 
       it('should not have responded', function () {
-        let openxBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
-        let closexBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
-
         expect(openxBidder.hasBidderResponded).to.equal(false);
         expect(closexBidder.hasBidderResponded).to.equal(false);
       });
