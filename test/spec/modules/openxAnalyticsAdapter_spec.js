@@ -941,7 +941,7 @@ describe('openx analytics adapter', function() {
       });
 
       it('should track the user ids', function () {
-        expect(auction.hasUserData).to.deep.equal(['bla_id', 'digitrustid', 'lipbid', 'tdid']);
+        expect(auction.userIdProviders).to.deep.equal(['bla_id', 'digitrustid', 'lipbid', 'tdid']);
       });
 
       it('should not have responded', function () {
