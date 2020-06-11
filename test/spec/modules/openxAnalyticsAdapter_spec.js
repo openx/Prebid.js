@@ -14,6 +14,8 @@ const SLOT_LOADED = 'slotOnload';
 const zlib = require('zlib');
 const openxAdapter = openxAdapterParams.adapter;
 
+const CURRENT_TIME = 1586000000000;
+
 describe('openx analytics adapter', function() {
   describe('when validating the configuration', function () {
     let spy;
@@ -56,12 +58,6 @@ describe('openx analytics adapter', function() {
     const SLOT_LOAD_WAIT_TIME = 200;
 
     let clock;
-    before(function () {
-      clock = sinon.useFakeTimers();
-    });
-    after(function () {
-      clock.restore();
-    });
 
     const openxAdUnitInfo = [{'code': 'div-1',
       'mediaTypes': {'banner': {'sizes': [[320, 50]]}},
@@ -214,6 +210,8 @@ describe('openx analytics adapter', function() {
     }
 
     before(function() {
+      clock = sinon.useFakeTimers(CURRENT_TIME);
+
       sinon.stub(events, 'getEvents').returns([]);
       openxAdapter.enableAnalytics({
         provider: 'openx',
@@ -228,6 +226,7 @@ describe('openx analytics adapter', function() {
     });
 
     after(function() {
+      clock.restore();
       events.getEvents.restore();
       openxAdapter.disableAnalytics();
     });
@@ -599,14 +598,14 @@ describe('openx analytics adapter', function() {
 
     const auctionInit = {
       auctionId: 'test-auction-id',
-      timestamp: 1586000000000,
+      timestamp: CURRENT_TIME,
       timeout: 3000,
       adUnitCodes: [AD_UNIT_CODE],
     };
 
     const bidRequestedOpenX = {
       auctionId: 'test-auction-id',
-      auctionStart: 1586000000000,
+      auctionStart: CURRENT_TIME,
       bids: [
         {
           adUnitCode: AD_UNIT_CODE,
@@ -614,16 +613,21 @@ describe('openx analytics adapter', function() {
           bidder: 'openx',
           params: { unit: 'test-openx-ad-unit-id' },
           userId: {
-            tdid: 'test-tradedesk-id'
+            tdid: 'test-tradedesk-id',
+            empty_id: '',
+            null_id: null,
+            bla_id: '',
+            digitrustid: { data: { id: '1' } },
+            lipbid: { lipb: '2' }
           }
         }
       ],
-      start: 1586000000010
+      start: CURRENT_TIME + 10
     };
 
     const bidRequestedCloseX = {
       auctionId: 'test-auction-id',
-      auctionStart: 1586000000000,
+      auctionStart: CURRENT_TIME,
       bids: [
         {
           adUnitCode: AD_UNIT_CODE,
@@ -631,11 +635,12 @@ describe('openx analytics adapter', function() {
           bidder: 'closex',
           params: { unit: 'test-closex-ad-unit-id' },
           userId: {
+            bla_id: '2',
             tdid: 'test-tradedesk-id'
           }
         }
       ],
-      start: 1586000000020
+      start: CURRENT_TIME + 20
     };
 
     const bidResponseOpenX = {
@@ -651,7 +656,7 @@ describe('openx analytics adapter', function() {
       creativeId: 'openx-crid',
       currency: 'USD',
       timeToRespond: 100,
-      responseTimestamp: 1586000000030,
+      responseTimestamp: CURRENT_TIME + 30,
       ts: 'test-openx-ts'
     };
 
@@ -669,7 +674,7 @@ describe('openx analytics adapter', function() {
       currency: 'USD',
       timeToRespond: 200,
       dealId: 'test-closex-deal-id',
-      responseTimestamp: 1586000000040,
+      responseTimestamp: CURRENT_TIME + 40,
       ts: 'test-closex-ts'
     };
 
@@ -697,8 +702,8 @@ describe('openx analytics adapter', function() {
 
     const auctionEnd = {
       auctionId: 'test-auction-id',
-      timestamp: 1586000000000,
-      auctionEnd: 1586000000100,
+      timestamp: CURRENT_TIME,
+      auctionEnd: CURRENT_TIME + 100,
       timeout: 3000,
       adUnitCodes: [AD_UNIT_CODE],
     };
@@ -751,7 +756,7 @@ describe('openx analytics adapter', function() {
 
     beforeEach(function() {
       sinon.stub(events, 'getEvents').returns([]);
-      clock = sinon.useFakeTimers();
+      clock = sinon.useFakeTimers(CURRENT_TIME);
     });
 
     afterEach(function() {
@@ -903,6 +908,9 @@ describe('openx analytics adapter', function() {
 
     describe('when there are bid requests', function () {
       let auction;
+      let openxBidder;
+      let closexBidder;
+
       beforeEach(function () {
         openxAdapter.enableAnalytics({options: DEFAULT_V2_ANALYTICS_CONFIG});
 
@@ -914,6 +922,8 @@ describe('openx analytics adapter', function() {
         ]);
         clock.tick(SLOT_LOAD_WAIT_TIME * 2);
         auction = JSON.parse(server.requests[0].requestBody)[0];
+        openxBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
+        closexBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
       });
 
       afterEach(function () {
@@ -922,9 +932,6 @@ describe('openx analytics adapter', function() {
       });
 
       it('should track the bidder', function () {
-        let openxBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
-        let closexBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
-
         expect(openxBidder.bidder).to.equal('openx');
         expect(closexBidder.bidder).to.equal('closex');
       });
@@ -934,17 +941,10 @@ describe('openx analytics adapter', function() {
       });
 
       it('should track the user ids', function () {
-        let openxBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
-        let closexBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
-
-        expect(openxBidder.userIds).to.deep.include({module: 'tdid', id: bidRequestedOpenX.bids[0].userId.tdid});
-        expect(closexBidder.userIds).to.deep.include({module: 'tdid', id: bidRequestedCloseX.bids[0].userId.tdid});
+        expect(auction.hasUserData).to.deep.equal(['bla_id', 'digitrustid', 'lipbid', 'tdid']);
       });
 
       it('should not have responded', function () {
-        let openxBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'openx');
-        let closexBidder = auction.adUnits[0].bidRequests.find(bidderRequest => bidderRequest.bidder === 'closex');
-
         expect(openxBidder.hasBidderResponded).to.equal(false);
         expect(closexBidder.hasBidderResponded).to.equal(false);
       });
@@ -1071,13 +1071,9 @@ describe('openx analytics adapter', function() {
     });
 
     describe('when there are bidder wins', function () {
-      const CURRENT_TIME = 1586000000000;
       let auction;
       beforeEach(function () {
         openxAdapter.enableAnalytics({options: DEFAULT_V2_ANALYTICS_CONFIG});
-
-        // set current time
-        clock = sinon.useFakeTimers(CURRENT_TIME);
 
         simulateAuction([
           [AUCTION_INIT, auctionInit],
@@ -1094,7 +1090,6 @@ describe('openx analytics adapter', function() {
       });
 
       afterEach(function () {
-        clock.restore();
         openxAdapter.reset();
         openxAdapter.disableAnalytics();
       });
@@ -1111,13 +1106,9 @@ describe('openx analytics adapter', function() {
     });
 
     describe('when a winning bid renders', function () {
-      const CURRENT_TIME = 1586000000000;
       let auction;
       beforeEach(function () {
         openxAdapter.enableAnalytics({options: DEFAULT_V2_ANALYTICS_CONFIG});
-
-        // set current time
-        clock = sinon.useFakeTimers(CURRENT_TIME);
 
         simulateAuction([
           [AUCTION_INIT, auctionInit],
@@ -1135,7 +1126,6 @@ describe('openx analytics adapter', function() {
       });
 
       afterEach(function () {
-        clock.restore();
         openxAdapter.reset();
         openxAdapter.disableAnalytics();
       });
@@ -1161,14 +1151,14 @@ describe('openx analytics adapter', function() {
 
     const auctionInit = {
       auctionId: 'test-auction-id',
-      timestamp: 1586000000000,
+      timestamp: CURRENT_TIME,
       timeout: 3000,
       adUnitCodes: [AD_UNIT_CODE],
     };
 
     const bidRequestedOpenX = {
       auctionId: 'test-auction-id',
-      auctionStart: 1586000000000,
+      auctionStart: CURRENT_TIME,
       bids: [
         {
           adUnitCode: AD_UNIT_CODE,
@@ -1177,12 +1167,12 @@ describe('openx analytics adapter', function() {
           params: { unit: 'test-openx-ad-unit-id' },
         }
       ],
-      start: 1586000000010
+      start: CURRENT_TIME + 10
     };
 
     const bidRequestedCloseX = {
       auctionId: 'test-auction-id',
-      auctionStart: 1586000000000,
+      auctionStart: CURRENT_TIME,
       bids: [
         {
           adUnitCode: AD_UNIT_CODE,
@@ -1191,7 +1181,7 @@ describe('openx analytics adapter', function() {
           params: { unit: 'test-closex-ad-unit-id' },
         }
       ],
-      start: 1586000000020
+      start: CURRENT_TIME + 20
     };
 
     const bidResponseOpenX = {
@@ -1207,7 +1197,7 @@ describe('openx analytics adapter', function() {
       creativeId: 'openx-crid',
       currency: 'USD',
       timeToRespond: 100,
-      responseTimestamp: 1586000000030,
+      responseTimestamp: CURRENT_TIME + 30,
       ts: 'test-openx-ts'
     };
 
@@ -1225,7 +1215,7 @@ describe('openx analytics adapter', function() {
       currency: 'USD',
       timeToRespond: 200,
       dealId: 'test-closex-deal-id',
-      responseTimestamp: 1586000000040,
+      responseTimestamp: CURRENT_TIME + 40,
       ts: 'test-closex-ts'
     };
 
@@ -1240,8 +1230,8 @@ describe('openx analytics adapter', function() {
 
     const auctionEnd = {
       'auctionId': 'test-auction-id',
-      'timestamp': 1586000000000,
-      'auctionEnd': 1586000000100,
+      'timestamp': CURRENT_TIME,
+      'auctionEnd': CURRENT_TIME + 100,
       'auctionStatus': 'completed',
       'adUnits': openxAdUnitInfo,
       'adUnitCodes': [
@@ -1298,7 +1288,8 @@ describe('openx analytics adapter', function() {
 
     beforeEach(function() {
       sinon.stub(events, 'getEvents').returns([]);
-      clock = sinon.useFakeTimers();
+      // set current time
+      clock = sinon.useFakeTimers(CURRENT_TIME);
     });
 
     afterEach(function() {
@@ -1307,7 +1298,6 @@ describe('openx analytics adapter', function() {
     });
 
     describe('when are bidder wins', function () {
-      const CURRENT_TIME = 1586000000000;
       let v1Auction;
       let v2Auction;
       beforeEach(function () {
@@ -1320,9 +1310,6 @@ describe('openx analytics adapter', function() {
             payloadWaitTime: SLOT_LOAD_WAIT_TIME
           }
         });
-
-        // set current time
-        clock = sinon.useFakeTimers(CURRENT_TIME);
 
         simulateAuction([
           [AUCTION_INIT, auctionInit],
@@ -1346,7 +1333,6 @@ describe('openx analytics adapter', function() {
       });
 
       afterEach(function () {
-        clock.restore();
         openxAdapter.reset();
         openxAdapter.disableAnalytics();
       });
