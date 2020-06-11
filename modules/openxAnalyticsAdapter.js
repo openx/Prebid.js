@@ -1242,7 +1242,7 @@ function buildAuctionPayload(auction) {
     return utils._map(mediaTypes, (mediaTypeConfig, mediaType) => {
       return utils.parseSizesInput(mediaTypeConfig.sizes)
         .map(size => `${mediaType}_${size}`);
-    }).flat();
+    }).reduce(utils.flatten, []);
   }
 
   function getMediaTypes(mediaTypes) {
