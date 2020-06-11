@@ -1145,7 +1145,7 @@ function buildAuctionPayload(auction) {
     browser: detectBrowser(),
     testCode: analyticsConfig.testCode,
     // return an array of module name that have user data
-    hasUserData: buildHasUserDataPayload(userIds),
+    userIdProviders: buildUserIdProviders(userIds),
     adUnits: buildAdUnitsPayload(adUnitCodeToAdUnitMap),
   };
 
@@ -1213,7 +1213,7 @@ function buildAuctionPayload(auction) {
     });
   }
 
-  function buildHasUserDataPayload(userIds) {
+  function buildUserIdProviders(userIds) {
     return utils._map(userIds, (userId) => {
       return utils._map(userId, (id, module) => {
         return hasUserData(module, id) ? module : false
