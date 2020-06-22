@@ -161,7 +161,7 @@ function getVideoImp(bidRequest) {
       video: {...bidRequest.params.openrtb, id: 1},
     };
   }
-  const [w, h] = bidRequest.mediaTypes.video.playerSize[0];
+  const [w, h] = bidRequest.mediaTypes.video.playerSize;
   return {
     video: {
       id: bidRequest.bidId,
