@@ -1034,6 +1034,7 @@ describe('OpenxAdapter', function () {
         idl_env: '1111-idl_env',
         lipb: {lipbid: '1111-lipb'},
         netId: 'fH5A3n2O8_CZZyPoJVD-eabc6ECb7jhxCicsds7qSg',
+        oa: {oa_ids: ['segment-456', 'segment-789']},
         parrableid: 'eidVersion.encryptionKeyReference.encryptedValue',
         pubcid: '1111-pubcid',
         tdid: '1111-tdid',
@@ -1079,6 +1080,9 @@ describe('OpenxAdapter', function () {
                 break;
               case 'lipb':
                 userIdValue = EXAMPLE_DATA_BY_ATTR.lipb.lipbid;
+                break;
+              case 'oa':
+                userIdValue = encodeURIComponent(EXAMPLE_DATA_BY_ATTR.oa.oa_ids.join(','));
                 break;
               default:
                 userIdValue = EXAMPLE_DATA_BY_ATTR[userIdProviderKey];
