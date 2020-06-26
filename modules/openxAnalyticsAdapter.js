@@ -18,7 +18,7 @@ const SCHEMA_VERSION = '0.1';
 const AUCTION_END_WAIT_TIME = 1000;
 const URL_PARAM = '';
 const ANALYTICS_TYPE = 'endpoint';
-const ENDPOINT = 'https://prebid.openx.net/ox/analytics';
+const ENDPOINT = 'https://prebid.openx.net/ox/analytics/';
 
 // Event Types
 const {
