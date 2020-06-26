@@ -1040,58 +1040,87 @@ describe('OpenxAdapter', function () {
         tdid: '1111-tdid',
       };
 
+      function getUserId(userIdKey){
+        let userIdValue;
+        // handle cases where userId key refers to an object
+        switch (userIdKey) {
+          case 'digitrustid':
+            userIdValue = EXAMPLE_DATA_BY_ATTR.digitrustid.data.id;
+            break;
+          case 'lipb':
+            userIdValue = EXAMPLE_DATA_BY_ATTR.lipb.lipbid;
+            break;
+          case 'oa':
+            userIdValue = EXAMPLE_DATA_BY_ATTR.oa.oa_ids.join('|');
+            break;
+          default:
+            userIdValue = EXAMPLE_DATA_BY_ATTR[userIdKey];
+        }
+        return userIdValue;
+      }
+
+      let bidRequestsWithUserId;
+      beforeEach(function () {
+        bidRequestsWithUserId = [{
+          bidder: 'openx',
+          params: {
+            unit: '11',
+            delDomain: 'test-del-domain'
+          },
+          userId: {},
+          adUnitCode: 'adunit-code',
+          mediaTypes: {
+            banner: {
+              sizes: [[300, 250], [300, 600]]
+            }
+          },
+          bidId: 'test-bid-id-1',
+          bidderRequestId: 'test-bid-request-1',
+          auctionId: 'test-auction-1'
+        }];
+      });
+
       // generates the same set of tests for each id provider
-      utils._each(USER_ID_CODE_TO_QUERY_ARG, (userIdQueryArg, userIdProviderKey) => {
+      utils._each(EXAMPLE_DATA_BY_ATTR, (userIdObjOrValue, userIdProviderKey) => {
         describe(`with userId attribute: ${userIdProviderKey}`, function () {
-          it(`should not send a ${userIdQueryArg} query param when there is no userId.${userIdProviderKey} defined in the bid requests`, function () {
+          it(`should not send a cm query param when there is no userId.${userIdProviderKey} defined in the bid requests`, function () {
             const request = spec.buildRequests(bidRequestsWithMediaTypes, mockBidderRequest);
-            expect(request[0].data).to.not.have.any.keys(userIdQueryArg);
+            expect(request[0].data.cm).to.be.undefined;
           });
 
-          it(`should send a ${userIdQueryArg} query param when userId.${userIdProviderKey} is defined in the bid requests`, function () {
-            const bidRequestsWithUserId = [{
-              bidder: 'openx',
-              params: {
-                unit: '11',
-                delDomain: 'test-del-domain'
-              },
-              userId: {
-              },
-              adUnitCode: 'adunit-code',
-              mediaTypes: {
-                banner: {
-                  sizes: [[300, 250], [300, 600]]
-                }
-              },
-              bidId: 'test-bid-id-1',
-              bidderRequestId: 'test-bid-request-1',
-              auctionId: 'test-auction-1'
-            }];
+          it(`should send a cm query param when userId.${userIdProviderKey} is defined in the bid requests`, function () {
+
             // enrich bid request with userId key/value
             bidRequestsWithUserId[0].userId[userIdProviderKey] = EXAMPLE_DATA_BY_ATTR[userIdProviderKey];
 
             const request = spec.buildRequests(bidRequestsWithUserId, mockBidderRequest);
+            const userIdValue = getUserId(userIdProviderKey);
 
-            let userIdValue;
-            // handle cases where userId key refers to an object
-            switch (userIdProviderKey) {
-              case 'digitrustid':
-                userIdValue = EXAMPLE_DATA_BY_ATTR.digitrustid.data.id;
-                break;
-              case 'lipb':
-                userIdValue = EXAMPLE_DATA_BY_ATTR.lipb.lipbid;
-                break;
-              case 'oa':
-                userIdValue = encodeURIComponent(EXAMPLE_DATA_BY_ATTR.oa.oa_ids.join(','));
-                break;
-              default:
-                userIdValue = EXAMPLE_DATA_BY_ATTR[userIdProviderKey];
-            }
-
-            expect(request[0].data[USER_ID_CODE_TO_QUERY_ARG[userIdProviderKey]]).to.equal(userIdValue);
+            expect(request[0].data.sm).to.have.string(encodeURIComponent(`${userIdProviderKey}:${userIdValue}`));
           });
         });
       });
+
+      it('when there are multiple ids, they should be separated by a commas', function () {
+        let expectedStrings = [];
+        let userIdKeys = [
+          'oa',
+          'idl_env',
+          'digitrustid'
+        ];
+
+        userIdKeys.forEach(userIdKey => {
+          // enrich bid request with userId key/value
+          bidRequestsWithUserId[0].userId[userIdKey] = EXAMPLE_DATA_BY_ATTR[userIdKey];
+
+          // build expected query data
+          const userIdValue = getUserId(userIdKey);
+          expectedStrings.push(`${userIdKey}:${userIdValue}`);
+        });
+        const request = spec.buildRequests(bidRequestsWithUserId, mockBidderRequest);
+
+        expect(request[0].data.sm).to.have.string(encodeURIComponent(expectedStrings.join(',')));
+      })
     });
   });
 

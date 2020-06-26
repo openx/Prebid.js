@@ -21,7 +21,6 @@ export const OA_URL = 'https://oajs.openx.net/beacon';
 /**
  * @typedef {Object} OpenAudienceIdObject
  * @property {Array<string>} oa_ids A list of OpenAudience Ids
- * @property {string|undefined} oauid OpenAudience Universal Id
  */
 
 /** @type {Submodule} */
@@ -85,12 +84,9 @@ export const openAudienceSubmodule = {
      * @param callback
      */
     function getOaIds(callback) {
-      // Check ats during callback so it has a chance to initialise.
-      // If ats library is available, use it to retrieve envelope. If not use standard third party endpoint
+      // If oajs is available, use it to retrieve id object. If not, fall back to API.
       if (window.oajs) {
-        window.oajs.cmd.push(function () {
-          window.oajs.getOaIds(params, callback);
-        });
+        window.oajs.getIds(params, callback);
       } else {
         let url = `${OA_URL}?${utils.formatQS(params)}`;
         getOaData(url, callback);

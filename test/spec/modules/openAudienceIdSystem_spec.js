@@ -54,7 +54,6 @@ describe('OpenAudienceId tests', function () {
       it('should call the OpenAudience endpoint', function () {
         let submoduleCallback = openAudienceSubmodule.getId(defaultConfigParams).callback;
         submoduleCallback(callbackSpy);
-        window.oajs.cmd[0]();
 
         expect(oajsSpy.calledOnce).to.be.true;
         expect(oajsSpy.getCall(0).args[0].gdpr_consent).to.equal(undefined);
@@ -67,7 +66,6 @@ describe('OpenAudienceId tests', function () {
         };
         let submoduleCallback = openAudienceSubmodule.getId(defaultConfigParams, gdprObject).callback;
         submoduleCallback(callbackSpy);
-        window.oajs.cmd[0]();
 
         expect(oajsSpy.calledOnce).to.be.true;
         expect(oajsSpy.getCall(0).args[0].gdpr).to.equal(1);
@@ -78,7 +76,6 @@ describe('OpenAudienceId tests', function () {
         mockedGetConsentData.returns('1YNY');
         let submoduleCallback = openAudienceSubmodule.getId(defaultConfigParams).callback;
         submoduleCallback(callbackSpy);
-        window.oajs.cmd[0]();
 
         expect(oajsSpy.getCall(0).args[0].us_privacy).to.equal('1YNY');
       });

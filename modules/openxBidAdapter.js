@@ -8,20 +8,6 @@ const BIDDER_CODE = 'openx';
 const BIDDER_CONFIG = 'hb_pb';
 const BIDDER_VERSION = '3.0.2';
 
-export const USER_ID_CODE_TO_QUERY_ARG = {
-  britepoolid: 'britepoolid', // BritePool ID
-  criteoId: 'criteoid', // CriteoID
-  digitrustid: 'digitrustid', // DigiTrust
-  id5id: 'id5id', // ID5 ID
-  idl_env: 'lre', // LiveRamp IdentityLink
-  lipb: 'lipbid', // LiveIntent ID
-  netId: 'netid', // netID
-  oa: 'oa_ids', // OpenAudience Ids
-  parrableid: 'parrableid', // Parrable ID
-  pubcid: 'pubcid', // PubCommon ID
-  tdid: 'ttduuid', // The Trade Desk Unified ID
-};
-
 export const spec = {
   code: BIDDER_CODE,
   gvlid: 69,
@@ -212,9 +198,9 @@ function getMediaTypeFromRequest(serverRequest) {
 
 function buildCommonQueryParamsFromBids(bids, bidderRequest) {
   const isInIframe = utils.inIframe();
-  let defaultParams;
+  let commonParams;
 
-  defaultParams = {
+  commonParams = {
     ju: config.getConfig('pageUrl') || bidderRequest.refererInfo.referer,
     ch: document.charSet || document.characterSet,
     res: `${screen.width}x${screen.height}x${screen.colorDepth}`,
@@ -228,63 +214,72 @@ function buildCommonQueryParamsFromBids(bids, bidderRequest) {
   };
 
   if (bids[0].params.platform) {
-    defaultParams.ph = bids[0].params.platform;
+    commonParams.ph = bids[0].params.platform;
   }
 
   if (bidderRequest.gdprConsent) {
     let gdprConsentConfig = bidderRequest.gdprConsent;
 
     if (gdprConsentConfig.consentString !== undefined) {
-      defaultParams.gdpr_consent = gdprConsentConfig.consentString;
+      commonParams.gdpr_consent = gdprConsentConfig.consentString;
     }
 
     if (gdprConsentConfig.gdprApplies !== undefined) {
-      defaultParams.gdpr = gdprConsentConfig.gdprApplies ? 1 : 0;
+      commonParams.gdpr = gdprConsentConfig.gdprApplies ? 1 : 0;
     }
 
     if (config.getConfig('consentManagement.cmpApi') === 'iab') {
-      defaultParams.x_gdpr_f = 1;
+      commonParams.x_gdpr_f = 1;
     }
   }
 
   if (bidderRequest && bidderRequest.uspConsent) {
-    defaultParams.us_privacy = bidderRequest.uspConsent;
+    commonParams.us_privacy = bidderRequest.uspConsent;
   }
 
   // normalize publisher common id
   if (utils.deepAccess(bids[0], 'crumbs.pubcid')) {
     utils.deepSetValue(bids[0], 'userId.pubcid', utils.deepAccess(bids[0], 'crumbs.pubcid'));
   }
-  defaultParams = appendUserIdsToQueryParams(defaultParams, bids[0].userId);
+  commonParams = appendUserIdsToQueryParams(commonParams, bids[0].userId);
 
   // supply chain support
   if (bids[0].schain) {
-    defaultParams.schain = serializeSupplyChain(bids[0].schain);
+    commonParams.schain = serializeSupplyChain(bids[0].schain);
   }
 
-  return defaultParams;
+  return commonParams;
 }
 
 function appendUserIdsToQueryParams(queryParams, userIds) {
+  let userIdQueryString;
+  let userIdMap = {};
   utils._each(userIds, (userIdObjectOrValue, userIdProviderKey) => {
-    const key = USER_ID_CODE_TO_QUERY_ARG[userIdProviderKey];
-
-    if (USER_ID_CODE_TO_QUERY_ARG.hasOwnProperty(userIdProviderKey)) {
-      switch (userIdProviderKey) {
-        case 'digitrustid':
-          queryParams[key] = utils.deepAccess(userIdObjectOrValue, 'data.id');
-          break;
-        case 'lipb':
-          queryParams[key] = userIdObjectOrValue.lipbid;
-          break;
-        case 'oa':
-          queryParams[key] = encodeURIComponent(userIdObjectOrValue.oa_ids.join(','));
-          break;
-        default:
-          queryParams[key] = userIdObjectOrValue;
-      }
+    switch (userIdProviderKey) {
+      case 'digitrustid':
+        userIdMap[userIdProviderKey] = utils.deepAccess(userIdObjectOrValue, 'data.id');
+        break;
+      case 'lipb':
+        userIdMap[userIdProviderKey] = userIdObjectOrValue.lipbid;
+        break;
+      case 'oa':
+        userIdMap[userIdProviderKey] = userIdObjectOrValue.oa_ids.join('|');
+        break;
+      default:
+        userIdMap[userIdProviderKey] = userIdObjectOrValue;
     }
   });
+
+  userIdQueryString = utils._map(userIdMap, function (userIdString, userIdKey) {
+    return userIdString ? `${userIdKey}:${userIdString}` : '';
+  })
+    .filter(userIdProviderInfo => userIdProviderInfo) // filter out empty values
+    .join(',');
+
+  if (userIdQueryString) {
+    console.log(userIdQueryString);
+    queryParams.sm = encodeURIComponent(userIdQueryString);
+  }
 
   return queryParams;
 }
