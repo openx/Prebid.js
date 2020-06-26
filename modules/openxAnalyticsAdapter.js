@@ -2,6 +2,8 @@ import adapter from '../src/AnalyticsAdapter.js';
 import CONSTANTS from '../src/constants.json';
 import adapterManager from '../src/adapterManager.js';
 import { ajax } from '../src/ajax.js';
+import find from 'core-js-pure/features/array/find.js'
+import includes from 'core-js-pure/features/array/includes.js'
 const utils = require('../src/utils.js');
 
 export const AUCTION_STATES = {
@@ -9,8 +11,6 @@ export const AUCTION_STATES = {
   ENDED: 'ended', // all auction requests have been accounted for
   COMPLETED: 'completed' // all slots have rendered
 };
-
-
 
 const ADAPTER_VERSION = '0.1';
 const SCHEMA_VERSION = '0.1';
@@ -68,7 +68,6 @@ const DEFAULT_ANALYTICS_CONFIG = {
   payloadWaitTimePadding: 2000
 };
 
-
 // Initialization
 /**
  * @type {OxAnalyticsConfig}
@@ -119,7 +118,7 @@ openxAdapter.enableAnalytics = function(adapterConfig = {options: {}}) {
       ['payloadWaitTimePadding', 'number', false],
     ];
 
-    let failedValidation = fieldValidations.find(([property, type, required]) => {
+    let failedValidation = find(fieldValidations, ([property, type, required]) => {
       // if required, the property has to exist
       // if property exists, type check value
       return (required && !analyticsOptions.hasOwnProperty(property)) ||
@@ -592,7 +591,7 @@ function getAuctionByGoogleTagSLot(slot) {
     }
 
     utils._each(auction.adUnitCodeToAdUnitMap, (bidderRequestIdMap, adUnitCode) => {
-      if (slotAdunitCodes.includes(adUnitCode)) {
+      if (includes(slotAdunitCodes, adUnitCode)) {
         slotAuction = auction;
       }
     });
