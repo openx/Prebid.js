@@ -9,7 +9,8 @@ const bidderVersion = '1.0';
 const VIDEO_TARGETING = ['startdelay', 'mimes', 'minduration', 'maxduration',
   'startdelay', 'skippable', 'playbackmethod', 'api', 'protocols', 'boxingallowed',
   'linearity', 'delivery', 'protocol', 'placement', 'minbitrate', 'maxbitrate', 'ext'];
-const REQUEST_URL = 'https://rtb.openx.net/openrtbb/prebidjs';
+export const REQUEST_URL = 'https://rtb.openx.net/openrtbb/prebidjs';
+export const SYNC_URL = 'https://u.openx.net/w/1.0/pd?ph=2d1251ae-7f3a-47cf-bd2a-2f288854a0ba';
 
 export const spec = {
   code: 'openx',
@@ -55,15 +56,21 @@ function buildRequests(bids, bidderRequest) {
 
 function createBannerRequest(bids, bidderRequest) {
   let data = getBaseRequest(bids[0], bidderRequest);
-  data.imp = bids.map(bid => ({
-    id: bid.bidId,
-    tagid: bid.params.unit,
-    banner: {
-      format: toFormat(bid.mediaTypes.banner.sizes),
-      topframe: utils.inIframe() ? 0 : 1
-    },
-    bidfloor: getFloor(bid, 'banner')
-  }));
+  data.imp = bids.map(bid => {
+    let imp = {
+      id: bid.bidId,
+      tagid: bid.params.unit,
+      banner: {
+        format: toFormat(bid.mediaTypes.banner.sizes),
+        topframe: utils.inIframe() ? 0 : 1
+      },
+      bidfloor: getFloor(bid, 'banner')
+    };
+    if (bid.params.customParams) {
+      utils.deepSetValue(imp, 'ext.customParams', bid.params.customParams);
+    }
+    return imp;
+  });
   return {
     method: 'POST',
     url: REQUEST_URL,
@@ -104,6 +111,9 @@ function createVideoRequest(bid, bidderRequest) {
     },
     bidfloor: getFloor(bid, 'video')
   }];
+  if (bid.params.customParams) {
+    utils.deepSetValue(data.imp[[0]], 'ext.customParams', bid.params.customParams);
+  }
   if (bid.params.openrtb) {
     Object.keys(bid.params.openrtb)
       .filter(param => includes(VIDEO_TARGETING, param))
@@ -204,20 +214,30 @@ function interpretResponse(resp, req) {
   }
 
   let bids = [];
-  respBody.seatbid.forEach(seatbid =>
-    bids = [...bids, ...seatbid.bid.map(bid => ({
-      requestId: bid.impid,
-      cpm: bid.price,
-      width: bid.w,
-      height: bid.h,
-      creativeId: bid.crid,
-      dealId: bid.dealid,
-      currency: respBody.cur || 'USD',
-      netRevenue: true,
-      ttl: 300,
-      ad: bid.adm,
-      mediaType: 'banner' in req.data.imp[0] ? BANNER : VIDEO
-    }))]);
+  respBody.seatbid.forEach(seatbid => {
+    bids = [...bids, ...seatbid.bid.map(bid => {
+      let response = {
+        requestId: bid.impid,
+        cpm: bid.price,
+        width: bid.w,
+        height: bid.h,
+        creativeId: bid.crid,
+        dealId: bid.dealid,
+        currency: respBody.cur || 'USD',
+        netRevenue: true,
+        ttl: 300,
+        mediaType: 'banner' in req.data.imp[0] ? BANNER : VIDEO
+      };
+
+      if (response.mediaType === VIDEO && bid.nurl) {
+        response.vastUrl = bid.nurl;
+      } else {
+        response.ad = bid.adm;
+      }
+
+      return response
+    })];
+  });
 
   return bids;
 }
@@ -232,7 +252,6 @@ function interpretResponse(resp, req) {
 function getUserSyncs(syncOptions, responses, gdprConsent, uspConsent) {
   if (syncOptions.iframeEnabled || syncOptions.pixelEnabled) {
     let pixelType = syncOptions.iframeEnabled ? 'iframe' : 'image';
-    let url = `https://u.openx.net/w/1.0/pd?ph=2d1251ae-7f3a-47cf-bd2a-2f288854a0ba`;
     let queryParamStrings = [];
     if (gdprConsent) {
       queryParamStrings.push('gdpr=' + (gdprConsent.gdprApplies ? 1 : 0));
@@ -243,7 +262,7 @@ function getUserSyncs(syncOptions, responses, gdprConsent, uspConsent) {
     }
     return [{
       type: pixelType,
-      url: `${url}${queryParamStrings.length > 0 ? '&' + queryParamStrings.join('&') : ''}`
+      url: `${SYNC_URL}${queryParamStrings.length > 0 ? '&' + queryParamStrings.join('&') : ''}`
     }];
   }
 }
