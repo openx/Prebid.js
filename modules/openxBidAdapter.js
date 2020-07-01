@@ -277,7 +277,6 @@ function appendUserIdsToQueryParams(queryParams, userIds) {
     .join(',');
 
   if (userIdQueryString) {
-    console.log(userIdQueryString);
     queryParams.sm = encodeURIComponent(userIdQueryString);
   }
 

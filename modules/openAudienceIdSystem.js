@@ -60,22 +60,7 @@ export const openAudienceSubmodule = {
       return;
     }
 
-    const hasGdpr = (consentData && typeof consentData.gdprApplies === 'boolean' && consentData.gdprApplies) ? 1 : 0;
-    let gdprConsent = consentData && consentData.consentString;
-    let usPrivacy = uspDataHandler.getConsentData();
 
-    let params = {
-      rid: configParams.resourceId,
-      gdpr: hasGdpr,
-    };
-
-    if (hasGdpr) {
-      params.gdpr_consent = gdprConsent
-    }
-
-    if (usPrivacy) {
-      params.us_privacy = usPrivacy;
-    }
 
     return {callback: getOaIds};
 
@@ -86,10 +71,31 @@ export const openAudienceSubmodule = {
     function getOaIds(callback) {
       // If oajs is available, use it to retrieve id object. If not, fall back to API.
       if (window.oajs) {
-        window.oajs.getIds(params, callback);
+        window.oajs.getIds(callback);
       } else {
-        let url = `${OA_URL}?${utils.formatQS(params)}`;
-        getOaData(url, callback);
+        let params = {
+          rid: configParams.resourceId,
+          ...getConsentQueryParams(consentData, uspDataHandler.getConsentData())
+      };
+        getOaData(`${OA_URL}?${utils.formatQS(params)}`, callback);
+      }
+
+      function getConsentQueryParams(gdprConsent, usPrivacy) {
+        const hasGdpr = (gdprConsent && typeof gdprConsent.gdprApplies === 'boolean' && gdprConsent.gdprApplies) ? 1 : 0;
+
+        let consentParams = {
+          gdpr: hasGdpr
+        };
+
+        if (hasGdpr) {
+          consentParams.gdpr_consent = gdprConsent && gdprConsent.consentString
+        }
+
+        if (usPrivacy) {
+          consentParams.us_privacy = usPrivacy;
+        }
+
+        return consentParams;
       }
     }
   }

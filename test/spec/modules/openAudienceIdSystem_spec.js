@@ -4,7 +4,7 @@ import {server} from 'test/mocks/xhr.js';
 import {uspDataHandler} from 'src/adapterManager';
 
 const RESOURCE_ID = 'test-resource-id';
-const defaultConfigParams = {resourceId: RESOURCE_ID};
+const DEFAULT_CONFIG = {resourceId: RESOURCE_ID};
 const responseHeader = {'Content-Type': 'application/json'};
 
 describe('OpenAudienceId tests', function () {
@@ -20,7 +20,7 @@ describe('OpenAudienceId tests', function () {
 
   describe('getId()', function () {
     let callbackSpy;
-    let oajsSpy;
+    let getIdsSpy;
     let mockedGetConsentData;
 
     beforeEach(function () {
@@ -39,11 +39,10 @@ describe('OpenAudienceId tests', function () {
     context('when oa.js is available', function () {
       beforeEach(function () {
         callbackSpy = sinon.spy();
-        oajsSpy = sinon.spy();
+        getIdsSpy = sinon.spy();
 
         window.oajs = {
-          cmd: [],
-          getOaIds: oajsSpy
+          getIds: getIdsSpy
         };
       });
 
@@ -52,32 +51,11 @@ describe('OpenAudienceId tests', function () {
       });
 
       it('should call the OpenAudience endpoint', function () {
-        let submoduleCallback = openAudienceSubmodule.getId(defaultConfigParams).callback;
+        let submoduleCallback = openAudienceSubmodule.getId(DEFAULT_CONFIG).callback;
         submoduleCallback(callbackSpy);
 
-        expect(oajsSpy.calledOnce).to.be.true;
-        expect(oajsSpy.getCall(0).args[0].gdpr_consent).to.equal(undefined);
-      });
-
-      it('should include GDRP parameters, if exists', function () {
-        let gdprObject = {
-          gdprApplies: true,
-          consentString: 'test-consent-string'
-        };
-        let submoduleCallback = openAudienceSubmodule.getId(defaultConfigParams, gdprObject).callback;
-        submoduleCallback(callbackSpy);
-
-        expect(oajsSpy.calledOnce).to.be.true;
-        expect(oajsSpy.getCall(0).args[0].gdpr).to.equal(1);
-        expect(oajsSpy.getCall(0).args[0].gdpr_consent).to.equal(gdprObject.consentString);
-      });
-
-      it('should include US privacy parameter, if exists', function () {
-        mockedGetConsentData.returns('1YNY');
-        let submoduleCallback = openAudienceSubmodule.getId(defaultConfigParams).callback;
-        submoduleCallback(callbackSpy);
-
-        expect(oajsSpy.getCall(0).args[0].us_privacy).to.equal('1YNY');
+        expect(getIdsSpy.calledOnce).to.be.true;
+        expect(getIdsSpy.getCall(0).args[0]).to.be.an.instanceof(Function);
       });
     });
 
@@ -87,11 +65,19 @@ describe('OpenAudienceId tests', function () {
       });
 
       it('should call the OpenAudience endpoint', function () {
-        let submoduleCallback = openAudienceSubmodule.getId(defaultConfigParams).callback;
+        let submoduleCallback = openAudienceSubmodule.getId(DEFAULT_CONFIG).callback;
         submoduleCallback(callbackSpy);
 
         let request = server.requests[0];
         expect(request.url).to.have.string(OA_URL);
+      });
+
+      it('should send the resource id', function () {
+        let submoduleCallback = openAudienceSubmodule.getId(DEFAULT_CONFIG).callback;
+        submoduleCallback(callbackSpy);
+
+        let request = server.requests[0];
+        expect(request.url).to.have.string(`rid=${RESOURCE_ID}`);
       });
 
       it('should include GDRP parameters, if exists', function () {
@@ -99,7 +85,7 @@ describe('OpenAudienceId tests', function () {
           gdprApplies: true,
           consentString: 'test-consent-string'
         }
-        let submoduleCallback = openAudienceSubmodule.getId(defaultConfigParams, gdprObject).callback;
+        let submoduleCallback = openAudienceSubmodule.getId(DEFAULT_CONFIG, gdprObject).callback;
         submoduleCallback(callbackSpy);
 
         let request = server.requests[0];
@@ -109,7 +95,7 @@ describe('OpenAudienceId tests', function () {
 
       it('should include US privacy parameter, if exists', function () {
         mockedGetConsentData.returns('1YNY');
-        let submoduleCallback = openAudienceSubmodule.getId(defaultConfigParams).callback;
+        let submoduleCallback = openAudienceSubmodule.getId(DEFAULT_CONFIG).callback;
         submoduleCallback(callbackSpy);
 
         let request = server.requests[0];
@@ -117,7 +103,7 @@ describe('OpenAudienceId tests', function () {
       });
 
       it('should not throw Uncaught TypeError when endpoint returns empty response', function () {
-        let submoduleCallback = openAudienceSubmodule.getId(defaultConfigParams).callback;
+        let submoduleCallback = openAudienceSubmodule.getId(DEFAULT_CONFIG).callback;
         submoduleCallback(callbackSpy);
         let request = server.requests[0];
         request.respond(
@@ -129,7 +115,7 @@ describe('OpenAudienceId tests', function () {
       });
 
       it('should log an error and continue to callback if ajax request errors', function () {
-        let submoduleCallback = openAudienceSubmodule.getId(defaultConfigParams).callback;
+        let submoduleCallback = openAudienceSubmodule.getId(DEFAULT_CONFIG).callback;
         submoduleCallback(callbackSpy);
         let request = server.requests[0];
         request.respond(
