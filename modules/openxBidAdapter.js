@@ -6,7 +6,7 @@ import {BANNER, VIDEO} from '../src/mediaTypes.js';
 const SUPPORTED_AD_TYPES = [BANNER, VIDEO];
 const BIDDER_CODE = 'openx';
 const BIDDER_CONFIG = 'hb_pb';
-const BIDDER_VERSION = '3.0.2';
+const BIDDER_VERSION = '3.1.0';
 
 export const spec = {
   code: BIDDER_CODE,
