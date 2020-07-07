@@ -135,6 +135,20 @@ describe('eids array generation for known sub-modules', function() {
     });
   });
 
+  it('OpenAudience', function() {
+    const userId = {
+      oa: {
+        oa_ids: ['oaid-1', 'oaid-2', 'oaid-3']
+      }
+    };
+    const newEids = createEidsArray(userId);
+
+    expect(newEids[0]).to.deep.equal({
+      source: 'openx.com',
+      uids: [{id: encodeURIComponent(userId.oa.oa_ids.join(',')), atype: 1}]
+    });
+  });
+
   it('NetId', function() {
     const userId = {
       netId: 'some-random-id-value'

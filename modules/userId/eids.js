@@ -81,6 +81,17 @@ const USER_IDS_CONFIG = {
     atype: 1
   },
 
+  // OpenX OpenAudience
+  'oa': {
+    source: 'openx.com',
+    atype: 1,
+    getValue: function (data) {
+      return data && data.oa_ids && data.oa_ids.length !== undefined
+        ? encodeURIComponent(data.oa_ids.join(','))
+        : undefined
+    }
+  },
+
   // NetId
   'netId': {
     source: 'netid.de',
