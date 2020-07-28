@@ -174,6 +174,9 @@ function getBaseRequest(bid, bidderRequest) {
     if (bidderRequest.gdprConsent.consentString !== undefined) {
       utils.deepSetValue(req, 'user.ext.consent', bidderRequest.gdprConsent.consentString);
     }
+    if (bidderRequest.gdprConsent.addtlConsent !== undefined) {
+      utils.deepSetValue(req, 'user.ext.ConsentedProvidersSettings.consented_providers', bidderRequest.gdprConsent.addtlConsent);
+    }
   }
   if (bidderRequest.uspConsent) {
     utils.deepSetValue(req, 'regs.ext.us_privacy', bidderRequest.uspConsent);
@@ -226,7 +229,8 @@ function interpretResponse(resp, req) {
         currency: respBody.cur || 'USD',
         netRevenue: true,
         ttl: 300,
-        mediaType: 'banner' in req.data.imp[0] ? BANNER : VIDEO
+        mediaType: 'banner' in req.data.imp[0] ? BANNER : VIDEO,
+        meta: { advertiserDomains: bid.adomain }
       };
 
       if (response.mediaType === VIDEO && bid.nurl) {
@@ -235,6 +239,11 @@ function interpretResponse(resp, req) {
         response.ad = bid.adm;
       }
 
+      if (bid.ext) {
+        response.meta.networkId = bid.ext.dsp_id;
+        response.meta.advertiserId = bid.ext.buyer_id;
+        response.meta.brandId = bid.ext.brand_id;
+      }
       return response
     })];
   });
