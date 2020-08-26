@@ -322,7 +322,7 @@ function onAuctionInit({auctionId, timestamp: startTime, timeout, adUnitCodes}) 
  * @param {PbBidRequest} bidRequest
  */
 function onBidRequested(bidRequest) {
-  const {auctionId, bids: bidderRequests, start} = bidRequest;
+  const {auctionId, bids: bidderRequests, start, timeout} = bidRequest;
   const auction = auctionMap[auctionId];
   const adUnitCodeToAdUnitMap = auction.adUnitCodeToAdUnitMap;
 
@@ -337,6 +337,7 @@ function onBidRequested(bidRequest) {
       source: src,
       startTime: start,
       timedOut: false,
+      timeLimit: timeout,
       bids: {}
     };
   });
@@ -639,13 +640,14 @@ function buildAuctionPayload(auction) {
 
       function buildBidRequestPayload(bidRequestsMap) {
         return utils._map(bidRequestsMap, (bidRequest) => {
-          let {bidder, source, bids, mediaTypes, timedOut} = bidRequest;
+          let {bidder, source, bids, mediaTypes, timeLimit, timedOut} = bidRequest;
           return {
             bidder,
             source,
             hasBidderResponded: Object.keys(bids).length > 0,
             availableAdSizes: getMediaTypeSizes(mediaTypes),
             availableMediaTypes: getMediaTypes(mediaTypes),
+            timeLimit,
             timedOut,
             bidResponses: utils._map(bidRequest.bids, (bidderBidResponse) => {
               let {
