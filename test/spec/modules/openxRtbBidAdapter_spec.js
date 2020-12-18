@@ -363,6 +363,7 @@ describe('OpenxRtbAdapter', function () {
             bidderRequest = {
               gdprConsent: {
                 consentString: 'test-gdpr-consent-string',
+                addtlConsent: 'test-addtl-consent-string',
                 gdprApplies: true
               },
               refererInfo: {}
@@ -393,6 +394,13 @@ describe('OpenxRtbAdapter', function () {
             const request = spec.buildRequests(bidRequests, bidderRequest);
             expect(request[0].data.user.ext.consent).to.equal(bidderRequest.gdprConsent.consentString);
             expect(request[1].data.user.ext.consent).to.equal(bidderRequest.gdprConsent.consentString);
+          });
+
+          it('should send the addtlConsent string', function () {
+            bidderRequest.bids = bidRequests;
+            const request = spec.buildRequests(bidRequests, bidderRequest);
+            expect(request[0].data.user.ext.ConsentedProvidersSettings.consented_providers).to.equal(bidderRequest.gdprConsent.addtlConsent);
+            expect(request[1].data.user.ext.ConsentedProvidersSettings.consented_providers).to.equal(bidderRequest.gdprConsent.addtlConsent);
           });
 
           it('should send a signal to specify that GDPR does not apply to this request', function () {
@@ -902,6 +910,14 @@ describe('OpenxRtbAdapter', function () {
         []
       );
       expect(syncs).to.deep.equal([{type: 'image', url: SYNC_URL}]);
+    });
+
+    it('should register custom syncUrl when exists', function () {
+      let syncs = spec.getUserSyncs(
+        {pixelEnabled: true},
+        [{body: {ext: {sync_url: 'http://url.com/sync?id=4'}}}]
+      );
+      expect(syncs).to.deep.equal([{type: 'image', url: 'http://url.com/sync?id=4'}]);
     });
 
     it('when iframe sync is allowed, it should register an iframe sync', function () {
