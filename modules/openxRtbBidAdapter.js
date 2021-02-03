@@ -167,12 +167,18 @@ function getBaseRequest(bid, bidderRequest) {
   if (bid.params.delDomain) {
     utils.deepSetValue(req, 'ext.delDomain', bid.params.delDomain);
   }
+  if (bid.params.test) {
+    req.test = 1
+  }
   if (bidderRequest.gdprConsent) {
     if (bidderRequest.gdprConsent.gdprApplies !== undefined) {
       utils.deepSetValue(req, 'regs.ext.gdpr', bidderRequest.gdprConsent.gdprApplies === true ? 1 : 0);
     }
     if (bidderRequest.gdprConsent.consentString !== undefined) {
       utils.deepSetValue(req, 'user.ext.consent', bidderRequest.gdprConsent.consentString);
+    }
+    if (bidderRequest.gdprConsent.addtlConsent !== undefined) {
+      utils.deepSetValue(req, 'user.ext.ConsentedProvidersSettings.consented_providers', bidderRequest.gdprConsent.addtlConsent);
     }
   }
   if (bidderRequest.uspConsent) {
@@ -226,7 +232,8 @@ function interpretResponse(resp, req) {
         currency: respBody.cur || 'USD',
         netRevenue: true,
         ttl: 300,
-        mediaType: 'banner' in req.data.imp[0] ? BANNER : VIDEO
+        mediaType: 'banner' in req.data.imp[0] ? BANNER : VIDEO,
+        meta: { advertiserDomains: bid.adomain }
       };
 
       if (response.mediaType === VIDEO && bid.nurl) {
@@ -235,6 +242,11 @@ function interpretResponse(resp, req) {
         response.ad = bid.adm;
       }
 
+      if (bid.ext) {
+        response.meta.networkId = bid.ext.dsp_id;
+        response.meta.advertiserId = bid.ext.buyer_id;
+        response.meta.brandId = bid.ext.brand_id;
+      }
       return response
     })];
   });
@@ -253,6 +265,7 @@ function getUserSyncs(syncOptions, responses, gdprConsent, uspConsent) {
   if (syncOptions.iframeEnabled || syncOptions.pixelEnabled) {
     let pixelType = syncOptions.iframeEnabled ? 'iframe' : 'image';
     let queryParamStrings = [];
+    let syncUrl = SYNC_URL;
     if (gdprConsent) {
       queryParamStrings.push('gdpr=' + (gdprConsent.gdprApplies ? 1 : 0));
       queryParamStrings.push('gdpr_consent=' + encodeURIComponent(gdprConsent.consentString || ''));
@@ -260,9 +273,12 @@ function getUserSyncs(syncOptions, responses, gdprConsent, uspConsent) {
     if (uspConsent) {
       queryParamStrings.push('us_privacy=' + encodeURIComponent(uspConsent));
     }
+    if (responses.length > 0 && responses[0].body && responses[0].body.ext && responses[0].body.ext.sync_url) {
+      syncUrl = responses[0].body.ext.sync_url
+    }
     return [{
       type: pixelType,
-      url: `${SYNC_URL}${queryParamStrings.length > 0 ? '&' + queryParamStrings.join('&') : ''}`
+      url: `${syncUrl}${queryParamStrings.length > 0 ? '&' + queryParamStrings.join('&') : ''}`
     }];
   }
 }

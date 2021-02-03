@@ -363,6 +363,7 @@ describe('OpenxRtbAdapter', function () {
             bidderRequest = {
               gdprConsent: {
                 consentString: 'test-gdpr-consent-string',
+                addtlConsent: 'test-addtl-consent-string',
                 gdprApplies: true
               },
               refererInfo: {}
@@ -393,6 +394,13 @@ describe('OpenxRtbAdapter', function () {
             const request = spec.buildRequests(bidRequests, bidderRequest);
             expect(request[0].data.user.ext.consent).to.equal(bidderRequest.gdprConsent.consentString);
             expect(request[1].data.user.ext.consent).to.equal(bidderRequest.gdprConsent.consentString);
+          });
+
+          it('should send the addtlConsent string', function () {
+            bidderRequest.bids = bidRequests;
+            const request = spec.buildRequests(bidRequests, bidderRequest);
+            expect(request[0].data.user.ext.ConsentedProvidersSettings.consented_providers).to.equal(bidderRequest.gdprConsent.addtlConsent);
+            expect(request[1].data.user.ext.ConsentedProvidersSettings.consented_providers).to.equal(bidderRequest.gdprConsent.addtlConsent);
           });
 
           it('should send a signal to specify that GDPR does not apply to this request', function () {
@@ -732,7 +740,9 @@ describe('OpenxRtbAdapter', function () {
               h: 250,
               crid: 'test-creative-id',
               dealid: 'test-deal-id',
-              adm: 'test-ad-markup'
+              adm: 'test-ad-markup',
+              adomain: ['brand.com'],
+              ext: {dsp_id: '123', buyer_id: '456', brand_id: '789'}
             }]
           }],
           cur: 'AUS'
@@ -778,17 +788,20 @@ describe('OpenxRtbAdapter', function () {
         expect(bid.currency).to.equal(bidResponse.cur);
       });
 
-      // TODO: Need to find how this is passed in
-      it('should return a transaction state', function () {
-        expect(bid.ts).to.equal(bidResponse.seatbid[0].bid[0].ext.ts);
-      });
-
       it('should return a brand ID', function () {
         expect(bid.meta.brandId).to.equal(bidResponse.seatbid[0].bid[0].ext.brand_id);
       });
 
       it('should return a dsp ID', function () {
-        expect(bid.meta.dspid).to.equal(bidResponse.seatbid[0].bid[0].ext.adv_id);
+        expect(bid.meta.networkId).to.equal(bidResponse.seatbid[0].bid[0].ext.dsp_id);
+      });
+
+      it('should return a buyer ID', function () {
+        expect(bid.meta.advertiserId).to.equal(bidResponse.seatbid[0].bid[0].ext.buyer_id);
+      });
+
+      it('should return adomain', function () {
+        expect(bid.meta.advertiserDomains).to.equal(bidResponse.seatbid[0].bid[0].adomain);
       });
     });
 
@@ -897,6 +910,14 @@ describe('OpenxRtbAdapter', function () {
         []
       );
       expect(syncs).to.deep.equal([{type: 'image', url: SYNC_URL}]);
+    });
+
+    it('should register custom syncUrl when exists', function () {
+      let syncs = spec.getUserSyncs(
+        {pixelEnabled: true},
+        [{body: {ext: {sync_url: 'http://url.com/sync?id=4'}}}]
+      );
+      expect(syncs).to.deep.equal([{type: 'image', url: 'http://url.com/sync?id=4'}]);
     });
 
     it('when iframe sync is allowed, it should register an iframe sync', function () {
