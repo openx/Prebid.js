@@ -64,7 +64,8 @@ function createBannerRequest(bids, bidderRequest) {
         format: toFormat(bid.mediaTypes.banner.sizes),
         topframe: utils.inIframe() ? 0 : 1
       },
-      bidfloor: getFloor(bid, 'banner')
+      bidfloor: getFloor(bid, 'banner'),
+      bidfloorcur: 'USD'
     };
     if (bid.params.customParams) {
       utils.deepSetValue(imp, 'ext.customParams', bid.params.customParams);
@@ -109,7 +110,8 @@ function createVideoRequest(bid, bidderRequest) {
       h: height,
       topframe: utils.inIframe() ? 0 : 1
     },
-    bidfloor: getFloor(bid, 'video')
+    bidfloor: getFloor(bid, 'video'),
+    bidfloorcur: 'USD'
   }];
   if (bid.params.customParams) {
     utils.deepSetValue(data.imp[[0]], 'ext.customParams', bid.params.customParams);
@@ -141,7 +143,7 @@ function createVideoRequest(bid, bidderRequest) {
 function getBaseRequest(bid, bidderRequest) {
   let req = {
     id: bidderRequest.auctionId,
-    cur: ['USD'],
+    cur: [config.getConfig('currency.adServerCurrency') || 'USD'],
     at: 1,
     tmax: config.getConfig('bidderTimeout'),
     site: {
@@ -201,16 +203,24 @@ function isBannerBid(bid) {
   return utils.deepAccess(bid, 'mediaTypes.banner') || !isVideoBid(bid);
 }
 
-function getFloor(bidRequest, mediaType) {
-  let floorInfo = {};
-  if (typeof bidRequest.getFloor === 'function') {
-    floorInfo = bidRequest.getFloor({
+function getFloor(bid, mediaType) {
+  let floor = bid.params.customFloor || 0;
+
+  if (typeof bid.getFloor === 'function') {
+    const floorInfo = bid.getFloor({
       currency: 'USD',
       mediaType: mediaType,
       size: '*'
     });
+
+    if (typeof floorInfo === 'object' &&
+      floorInfo.currency === 'USD' &&
+      !isNaN(parseFloat(floorInfo.floor))) {
+      floor = Math.max(floor, parseFloat(floorInfo.floor));
+    }
   }
-  return floorInfo.floor || bidRequest.params.customFloor || 0;
+
+  return floor;
 }
 
 function interpretResponse(resp, req) {
