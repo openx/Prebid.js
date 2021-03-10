@@ -57,6 +57,7 @@ function buildRequests(bids, bidderRequest) {
 function createBannerRequest(bids, bidderRequest) {
   let data = getBaseRequest(bids[0], bidderRequest);
   data.imp = bids.map(bid => {
+    const floor = getFloor(bid, BANNER);
     let imp = {
       id: bid.bidId,
       tagid: bid.params.unit,
@@ -64,11 +65,16 @@ function createBannerRequest(bids, bidderRequest) {
         format: toFormat(bid.mediaTypes.banner.sizes),
         topframe: utils.inIframe() ? 0 : 1
       },
-      bidfloor: getFloor(bid, 'banner'),
-      bidfloorcur: 'USD'
+      ext: {adUnitCode: bid.adUnitCode}
     };
     if (bid.params.customParams) {
       utils.deepSetValue(imp, 'ext.customParams', bid.params.customParams);
+    }
+    if (floor > 0) {
+      imp.bidfloor = floor;
+      imp.bidfloorcur = 'USD';
+    } else if (bid.params.customFloor) {
+      imp.bidfloor = bid.params.customFloor;
     }
     return imp;
   });
@@ -90,6 +96,7 @@ function createVideoRequest(bid, bidderRequest) {
   let height;
   const playerSize = utils.deepAccess(bid, 'mediaTypes.video.playerSize');
   const context = utils.deepAccess(bid, 'mediaTypes.video.context');
+  const floor = getFloor(bid, VIDEO);
   // normalize config for video size
   if (utils.isArray(bid.sizes) && bid.sizes.length === 2 && !utils.isArray(bid.sizes[0])) {
     width = parseInt(bid.sizes[0], 10);
@@ -110,11 +117,16 @@ function createVideoRequest(bid, bidderRequest) {
       h: height,
       topframe: utils.inIframe() ? 0 : 1
     },
-    bidfloor: getFloor(bid, 'video'),
-    bidfloorcur: 'USD'
+    ext: {dfp_ad_unit_code: bid.adUnitCode}
   }];
   if (bid.params.customParams) {
     utils.deepSetValue(data.imp[[0]], 'ext.customParams', bid.params.customParams);
+  }
+  if (floor > 0) {
+    data.imp[0].bidfloor = floor;
+    data.imp[0].bidfloorcur = 'USD';
+  } else if (bid.params.customFloor) {
+    data.imp[0].bidfloor = bid.params.customFloor;
   }
   if (bid.params.openrtb) {
     Object.keys(bid.params.openrtb)
@@ -204,7 +216,7 @@ function isBannerBid(bid) {
 }
 
 function getFloor(bid, mediaType) {
-  let floor = bid.params.customFloor || 0;
+  let floor = 0;
 
   if (typeof bid.getFloor === 'function') {
     const floorInfo = bid.getFloor({
