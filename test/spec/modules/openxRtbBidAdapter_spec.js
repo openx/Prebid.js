@@ -270,22 +270,75 @@ describe('OpenxRtbAdapter', function () {
         expect(request[0].data.imp[0].ext.customParams).to.equal(bidRequest.params.customParams);
       })
 
-      // TODO validate customFloor value - Brian
-      it('should send out custom floors on bids that have customFloors specified', function () {
-        const bidRequest = Object.assign({},
-          bidRequestsWithMediaTypes[0],
-          {
-            params: {
-              unit: '12345678',
-              delDomain: 'test-del-domain',
-              customFloor: 1.500
+      describe('floors', function () {
+        it('should send out custom floors on bids that have customFloors, no currency as account currency is used', function () {
+          const bidRequest = Object.assign({},
+            bidRequestsWithMediaTypes[0],
+            {
+              params: {
+                unit: '12345678',
+                delDomain: 'test-del-domain',
+                customFloor: 1.500
+              }
             }
-          }
-        );
+          );
 
-        const request = spec.buildRequests([bidRequest], mockBidderRequest);
-        expect(request[0].data.imp[0].bidfloor).to.equal(bidRequest.params.customFloor);
-      });
+          const request = spec.buildRequests([bidRequest], mockBidderRequest);
+          expect(request[0].data.imp[0].bidfloor).to.equal(bidRequest.params.customFloor);
+          expect(request[0].data.imp[0].bidfloorcur).to.equal(undefined);
+        });
+
+        context('with floors module', function () {
+          let adServerCurrencyStub;
+
+          beforeEach(function () {
+            adServerCurrencyStub = sinon
+              .stub(config, 'getConfig')
+              .withArgs('currency.adServerCurrency')
+          });
+
+          afterEach(function () {
+            config.getConfig.restore();
+          });
+
+          it('should send out floors on bids in USD', function () {
+            const bidRequest = Object.assign({},
+              bidRequestsWithMediaTypes[0],
+              {
+                getFloor: () => {
+                  return {
+                    currency: 'USD',
+                    floor: 9.99
+                  }
+                }
+              }
+            );
+
+            const request = spec.buildRequests([bidRequest], mockBidderRequest);
+            expect(request[0].data.imp[0].bidfloor).to.equal(9.99);
+            expect(request[0].data.imp[0].bidfloorcur).to.equal('USD');
+          });
+
+          it('should send not send floors', function () {
+            adServerCurrencyStub.returns('EUR');
+            const bidRequest = Object.assign({},
+              bidRequestsWithMediaTypes[0],
+              {
+                getFloor: () => {
+                  return {
+                    currency: 'BTC',
+                    floor: 9.99
+                  }
+                }
+              }
+            );
+
+            const request = spec.buildRequests([bidRequest], mockBidderRequest);
+            expect(request[0].data.imp[0].bidfloor).to.equal(undefined)
+            expect(request[0].data.imp[0].bidfloorcur).to.equal(undefined)
+          });
+        })
+      })
 
       context('when there is a consent management framework', function () {
         let bidRequests;
@@ -426,8 +479,8 @@ describe('OpenxRtbAdapter', function () {
             delete bidderRequest.gdprConsent.consentString;
             bidderRequest.bids = bidRequests;
             const request = spec.buildRequests(bidRequests, bidderRequest);
-            expect(request[0].data.imp[0]).to.not.have.property('ext');
-            expect(request[1].data.imp[0]).to.not.have.property('ext');
+            expect(request[0].data.imp[0].ext.consent).to.equal(undefined);
+            expect(request[1].data.imp[0].ext.consent).to.equal(undefined);
           });
         });
       });
@@ -651,7 +704,6 @@ describe('OpenxRtbAdapter', function () {
       });
     });
 
-    // TODO: do we need to send the divId? -> Brian
     it.skip('should send ad unit ids when any are defined', function () {
       const bidRequestsWithUnitIds = [{
         bidder: 'openx',
@@ -688,7 +740,7 @@ describe('OpenxRtbAdapter', function () {
       mockBidderRequest.bids = bidRequestsWithUnitIds;
       const request = spec.buildRequests(bidRequestsWithUnitIds, mockBidderRequest);
       expect(request[0].data.imp[1].tagid).to.equal(bidRequestsWithUnitIds[1].params.unit);
-      // expect(request[0].data.auid).to.equal(`,${bidRequestsWithUnitIds[1].params.unit}`);
+      expect(request[0].data.imp[1].ext.adUnitCode).to.equal(bidRequestsWithUnitIds[1].params.adUnitCode);
     });
   });
 
