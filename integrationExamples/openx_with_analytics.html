@@ -1,0 +1,94 @@
+<html>
+<head>
+    <script src="../../build/dev/prebid.js"></script>
+    <script src="https://www.googletagservices.com/tag/js/gpt.js"></script>
+    <script>
+        var FAILSAFE_TIMEOUT = 3300;
+        var PREBID_TIMEOUT = 1000;
+        var adUnits = [{
+            code: 'div1',
+            mediaTypes: {
+                banner: {
+                    sizes: [[300, 250], [300,600]],
+                }
+            },
+            // Replace this object to test a new Adapter!
+            bids: [{
+              bidder: "openx",
+              params: {
+                unit: "541024394",
+                delDomain: "sademo-d.openx.net"
+              }
+            }]
+
+        }];
+
+        var pbjs = pbjs || {};
+        pbjs.que = pbjs.que || [];
+
+        var googletag = googletag || {};
+        googletag.cmd = googletag.cmd || [];
+        googletag.cmd.push(function() {
+            googletag.pubads().disableInitialLoad();
+        });
+
+        pbjs.que.push(function() {
+            pbjs.setConfig({
+                "pageUrl": "http://openx.com/",
+                "bidderTimeout": 1500,
+                "priceGranularity": "high",
+                "enableSendAllBids": true
+            });
+            pbjs.enableAnalytics([{
+                provider: "openx",
+                options: {
+                    orgId: "kenan-org-dev",
+                    publisherAccountId: 777,
+                    publisherPlatformId: "kenan-org-dev-ph",
+                    configId: "kenan-org-config",
+                    sampling: 1,
+                    endpoint: "http://prebid.devint.openx.net/ox/analytics/"
+                }
+            }]);
+            
+            pbjs.addAdUnits(adUnits);
+            pbjs.requestBids({
+                bidsBackHandler: sendAdserverRequest,
+                timeout: PREBID_TIMEOUT
+            });
+        });
+
+        function sendAdserverRequest() {
+            if (pbjs.adserverRequestSent) return;
+            pbjs.adserverRequestSent = true;
+            googletag.cmd.push(function() {
+                pbjs.que.push(function() {
+                    pbjs.setTargetingForGPTAsync();
+                    googletag.pubads().refresh();
+                });
+            });
+        }
+
+        setTimeout(function() {
+            sendAdserverRequest();
+        }, FAILSAFE_TIMEOUT);
+
+        googletag.cmd.push(function () {
+            googletag.defineSlot('/90577858/prebid_auid', [[300, 250], [300, 600]], 'div1').addService(googletag.pubads());
+
+            googletag.pubads().enableSingleRequest();
+            googletag.enableServices();
+        });
+    </script>
+</head>
+
+<body>
+<h2>Prebid.js Test</h2>
+<h5>Div-1</h5>
+<div id='div1'>
+    <script type='text/javascript'>
+        googletag.cmd.push(function() { googletag.display('div1'); });
+    </script>
+</div>
+</body>
+</html>
