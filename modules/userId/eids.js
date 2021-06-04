@@ -221,6 +221,11 @@ const USER_IDS_CONFIG = {
   'admixerId': {
     source: 'admixer.net',
     atype: 3
+  },
+  // swanId
+  'swanId': {
+    source: 'swan.io',
+    atype: 1
   }
 };
 
