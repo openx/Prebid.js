@@ -98,7 +98,7 @@ pbjs.setConfig({
 ```
 
 # Additional Details
-[Banner Ads](https://docs.openx.com/publishers/prebid-adapter-web/)
+[Banner Ads](https://docs.openx.com/Content/developers/containers/prebid-adapter.html)
 
-[Video Ads](https://docs.openx.com/publishers/prebid-adapter-video/)
+[Video Ads](https://docs.openx.com/Content/developers/containers/prebid-video-adapter.html)
 
