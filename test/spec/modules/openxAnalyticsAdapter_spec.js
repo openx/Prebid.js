@@ -7,7 +7,7 @@ import { server } from 'test/mocks/xhr.js';
 import find from 'core-js-pure/features/array/find.js';
 
 const {
-  EVENTS: { AUCTION_INIT, BID_REQUESTED, BID_RESPONSE, BID_TIMEOUT, BID_WON, AUCTION_END }
+  EVENTS: { AUCTION_INIT, BID_REQUESTED, BID_RESPONSE, NO_BID, BID_TIMEOUT, BID_WON, AUCTION_END }
 } = CONSTANTS;
 const SLOT_LOADED = 'slotOnload';
 const CURRENT_TIME = 1586000000000;
@@ -153,12 +153,11 @@ describe('openx analytics adapter', function() {
       ts: 'test-closex-ts'
     };
 
-    const bidTimeoutOpenX = {
-      0: {
-        adUnitCode: AD_UNIT_CODE,
-        auctionId: 'test-auction-id',
-        bidId: 'test-openx-request-id'
-      }};
+    const noBidOpenX = {
+      adUnitCode: AD_UNIT_CODE,
+      auctionId: 'test-auction-id',
+      bidId: 'test-openx-request-id'
+    };
 
     const bidTimeoutCloseX = {
       0: {
@@ -450,20 +449,23 @@ describe('openx analytics adapter', function() {
       });
     });
 
-    describe('when there are request timeouts', function () {
+    describe('when there are request timeouts/no bids', function () {
       let auction;
       let openxBidRequest;
       let closexBidRequest;
+      const DELAY_BEFORE_NO_BID = 777;
 
       beforeEach(function () {
         openxAdapter.enableAnalytics({options: DEFAULT_V2_ANALYTICS_CONFIG});
+
+        clock.tick(DELAY_BEFORE_NO_BID);
 
         simulateAuction([
           [AUCTION_INIT, auctionInit],
           [BID_REQUESTED, bidRequestedCloseX],
           [BID_REQUESTED, bidRequestedOpenX],
           [BID_TIMEOUT, bidTimeoutCloseX],
-          [BID_TIMEOUT, bidTimeoutOpenX],
+          [NO_BID, noBidOpenX],
           [AUCTION_END, auctionEnd]
         ]);
         clock.tick(SLOT_LOAD_WAIT_TIME * 2);
@@ -479,7 +481,7 @@ describe('openx analytics adapter', function() {
       });
 
       it('should track the timeout', function () {
-        expect(openxBidRequest.timedOut).to.equal(true);
+        expect(openxBidRequest.timedOut).to.equal(false);
         expect(closexBidRequest.timedOut).to.equal(true);
       });
 
@@ -487,10 +489,17 @@ describe('openx analytics adapter', function() {
         expect(openxBidRequest.timeLimit).to.equal(2000);
         expect(closexBidRequest.timeLimit).to.equal(1000);
       });
+
+      it('should track the timeToRespond value when there is no bid', function () {
+        expect(openxBidRequest.timeToRespond).to.equal(DELAY_BEFORE_NO_BID - 10);
+        expect(closexBidRequest.timeToRespond).to.equal(closexBidRequest.timeLimit);
+      });
     });
 
     describe('when there are bid responses', function () {
       let auction;
+      let openxBidRequest;
+      let closexBidRequest;
       let openxBidResponse;
       let closexBidResponse;
 
@@ -509,8 +518,10 @@ describe('openx analytics adapter', function() {
         clock.tick(SLOT_LOAD_WAIT_TIME * 2);
         auction = JSON.parse(server.requests[0].requestBody)[0];
 
-        openxBidResponse = find(auction.adUnits[0].bidRequests, bidderRequest => bidderRequest.bidder === 'openx').bidResponses[0];
-        closexBidResponse = find(auction.adUnits[0].bidRequests, bidderRequest => bidderRequest.bidder === 'closex').bidResponses[0];
+        openxBidRequest = find(auction.adUnits[0].bidRequests, bidderRequest => bidderRequest.bidder === 'openx');
+        closexBidRequest = find(auction.adUnits[0].bidRequests, bidderRequest => bidderRequest.bidder === 'closex');
+        openxBidResponse = openxBidRequest.bidResponses[0];
+        closexBidResponse = closexBidRequest.bidResponses[0];
       });
 
       afterEach(function () {
@@ -551,7 +562,9 @@ describe('openx analytics adapter', function() {
         expect(closexBidResponse.dealId).to.equal(bidResponseCloseX.dealId); // deal id defined
       });
 
-      it('should track the bid\'s latency', function () {
+      it('should track the bid\'s latency with a response', function () {
+        expect(openxBidRequest.timeToRespond).to.equal(bidResponseOpenX.timeToRespond);
+        expect(closexBidRequest.timeToRespond).to.equal(bidResponseCloseX.timeToRespond);
         expect(openxBidResponse.latency).to.equal(bidResponseOpenX.timeToRespond);
         expect(closexBidResponse.latency).to.equal(bidResponseCloseX.timeToRespond);
       });
