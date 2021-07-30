@@ -22,7 +22,7 @@ const ENDPOINT = 'https://prebid.openx.net/ox/analytics/';
 
 // Event Types
 const {
-  EVENTS: { AUCTION_INIT, BID_REQUESTED, BID_RESPONSE, BID_TIMEOUT, AUCTION_END, BID_WON }
+  EVENTS: { AUCTION_INIT, BID_REQUESTED, BID_RESPONSE, NO_BID, BID_TIMEOUT, AUCTION_END, BID_WON }
 } = CONSTANTS;
 const SLOT_LOADED = 'slotOnload';
 
@@ -242,6 +242,9 @@ function prebidAnalyticsEventHandler({eventType, args}) {
     case BID_RESPONSE:
       onBidResponse(args);
       break;
+    case NO_BID:
+      onNoBid(args);
+      break;
     case BID_TIMEOUT:
       onBidTimeout(args);
       break;
@@ -317,6 +320,7 @@ function onAuctionInit({auctionId, timestamp: startTime, timeout, adUnitCodes}) 
  * @property {string} bidder - Bame of bidder
  * @property {string} bidId - Identifies the bid request
  * @property {Object} mediaTypes
+ * @property {Object} floorData
  * @property {Object} params
  * @property {string} src
  * @property {Object} userId - Map of userId module to module object
@@ -332,7 +336,7 @@ function onBidRequested(bidRequest) {
   const adUnitCodeToAdUnitMap = auction.adUnitCodeToAdUnitMap;
 
   bidderRequests.forEach(bidderRequest => {
-    const { adUnitCode, bidder, bidId: requestId, mediaTypes, params, src, userId } = bidderRequest;
+    const { adUnitCode, bidder, bidId: requestId, mediaTypes, params, src, userId, floorData } = bidderRequest;
 
     auction.userIds.push(userId);
     adUnitCodeToAdUnitMap[adUnitCode].bidRequestsMap[requestId] = {
@@ -340,7 +344,9 @@ function onBidRequested(bidRequest) {
       params,
       mediaTypes,
       source: src,
+      floorData: floorData,
       startTime: start,
+      timeToRespond: 0,
       timedOut: false,
       timeLimit: timeout,
       bids: {}
@@ -371,12 +377,15 @@ function onBidResponse(bidResponse) {
     originalCurrency,
     width,
     height,
-    timeToRespond: latency,
+    timeToRespond,
     adId,
-    meta
+    meta,
+    floorData,
   } = bidResponse;
 
-  auctionMap[auctionId].adUnitCodeToAdUnitMap[adUnitCode].bidRequestsMap[requestId].bids[adId] = {
+  const bidRequest = getCachedRequest(auctionId, adUnitCode, requestId);
+  bidRequest.timeToRespond = timeToRespond;
+  bidRequest.bids[adId] = {
     cpm,
     creativeId,
     requestTimestamp,
@@ -393,20 +402,36 @@ function onBidResponse(bidResponse) {
     originalCurrency,
     width,
     height,
-    latency,
+    latency: timeToRespond,
     winner: false,
     rendered: false,
     renderTime: 0,
+    floorData,
   };
 }
 
+function getCachedRequest(auctionId, adUnitCode, bidId) {
+  return utils.deepAccess(auctionMap,
+    `${auctionId}.adUnitCodeToAdUnitMap.${adUnitCode}.bidRequestsMap.${bidId}`)
+}
+
+function onNoBid(args) {
+  let {auctionId, adUnitCode, bidId} = args;
+
+  let noBidRequest = getCachedRequest(auctionId, adUnitCode, bidId);
+
+  if (noBidRequest) {
+    noBidRequest.timeToRespond = Date.now() - noBidRequest.startTime;
+  }
+}
+
 function onBidTimeout(args) {
-  utils._each(args, ({auctionId, adUnitCode, bidId: requestId}) => {
-    let timedOutRequest = utils.deepAccess(auctionMap,
-      `${auctionId}.adUnitCodeToAdUnitMap.${adUnitCode}.bidRequestsMap.${requestId}`);
+  utils._each(args, ({auctionId, adUnitCode, bidId}) => {
+    let timedOutRequest = getCachedRequest(auctionId, adUnitCode, bidId);
 
     if (timedOutRequest) {
       timedOutRequest.timedOut = true;
+      timedOutRequest.timeToRespond = timedOutRequest.timeLimit;
     }
   });
 }
@@ -660,15 +685,17 @@ function buildAuctionPayload(auction) {
 
       function buildBidRequestPayload(bidRequestsMap) {
         return utils._map(bidRequestsMap, (bidRequest) => {
-          let {bidder, source, bids, mediaTypes, timeLimit, timedOut} = bidRequest;
+          let {bidder, source, bids, mediaTypes, timeToRespond, timeLimit, timedOut, floorData} = bidRequest;
           return {
             bidder,
             source,
             hasBidderResponded: Object.keys(bids).length > 0,
             availableAdSizes: getMediaTypeSizes(mediaTypes),
             availableMediaTypes: getMediaTypes(mediaTypes),
+            timeToRespond,
             timeLimit,
             timedOut,
+            floorData,
             bidResponses: utils._map(bidRequest.bids, (bidderBidResponse) => {
               let {
                 adId,
@@ -686,7 +713,8 @@ function buildAuctionPayload(auction) {
                 latency,
                 winner,
                 rendered,
-                renderTime
+                renderTime,
+                floorData,
               } = bidderBidResponse;
 
               return {
@@ -706,7 +734,8 @@ function buildAuctionPayload(auction) {
                 ts,
                 rendered,
                 renderTime,
-                meta
+                meta,
+                floorData,
               }
             })
           }
