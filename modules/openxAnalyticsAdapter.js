@@ -22,9 +22,10 @@ const ENDPOINT = 'https://prebid.openx.net/ox/analytics/';
 
 // Event Types
 const {
-  EVENTS: { AUCTION_INIT, BID_REQUESTED, BID_RESPONSE, BID_TIMEOUT, AUCTION_END, BID_WON }
+  EVENTS: { AUCTION_INIT, BID_REQUESTED, BID_RESPONSE, NO_BID, BID_TIMEOUT, AUCTION_END, BID_WON },
+  BID_STATUS: {BID_REJECTED}
 } = CONSTANTS;
-const SLOT_LOADED = 'slotOnload';
+const SLOT_RENDER_ENDED = 'slotRenderEnded';
 
 const UTM_TAGS = [
   'utm_campaign',
@@ -101,9 +102,9 @@ openxAdapter.enableAnalytics = function(adapterConfig = {options: {}}) {
       let pubads = googletag.pubads();
 
       if (pubads.addEventListener) {
-        pubads.addEventListener(SLOT_LOADED, args => {
-          openxAdapter.track({eventType: SLOT_LOADED, args});
-          utils.logInfo('OX: SlotOnLoad event triggered');
+        pubads.addEventListener(SLOT_RENDER_ENDED, args => {
+          openxAdapter.track({eventType: SLOT_RENDER_ENDED, args});
+          utils.logInfo('OX: SlotRenderEnded event triggered');
         });
       }
     });
@@ -242,6 +243,9 @@ function prebidAnalyticsEventHandler({eventType, args}) {
     case BID_RESPONSE:
       onBidResponse(args);
       break;
+    case NO_BID:
+      onNoBid(args);
+      break;
     case BID_TIMEOUT:
       onBidTimeout(args);
       break;
@@ -251,8 +255,8 @@ function prebidAnalyticsEventHandler({eventType, args}) {
     case BID_WON:
       onBidWon(args);
       break;
-    case SLOT_LOADED:
-      onSlotLoadedV2(args);
+    case SLOT_RENDER_ENDED:
+      onSlotRenderEnded(args);
       break;
   }
 }
@@ -317,6 +321,7 @@ function onAuctionInit({auctionId, timestamp: startTime, timeout, adUnitCodes}) 
  * @property {string} bidder - Bame of bidder
  * @property {string} bidId - Identifies the bid request
  * @property {Object} mediaTypes
+ * @property {Object} floorData
  * @property {Object} params
  * @property {string} src
  * @property {Object} userId - Map of userId module to module object
@@ -327,20 +332,30 @@ function onAuctionInit({auctionId, timestamp: startTime, timeout, adUnitCodes}) 
  * @param {PbBidRequest} bidRequest
  */
 function onBidRequested(bidRequest) {
-  const {auctionId, bids: bidderRequests, start, timeout} = bidRequest;
+  const {auctionId, bids: bidderRequests, start, timeout, uspConsent} = bidRequest;
   const auction = auctionMap[auctionId];
+  auction.regs = {ccpa: uspConsent}
   const adUnitCodeToAdUnitMap = auction.adUnitCodeToAdUnitMap;
 
   bidderRequests.forEach(bidderRequest => {
-    const { adUnitCode, bidder, bidId: requestId, mediaTypes, params, src, userId } = bidderRequest;
-
+    const { adUnitCode, bidder, bidId: requestId, gdprConsent, mediaTypes, params, src, userId, floorData } = bidderRequest;
+    if (floorData && floorData.floorMin) {
+      floorData.floorMin *= 1000000
+    }
+    Object.assign(auction, {
+      floorData,
+      gdprApplies: gdprConsent && gdprConsent.gdprApplies ? gdprConsent.gdprApplies : null,
+    });
+    auction.regs.gdprApplies = gdprConsent && gdprConsent.gdprApplies ? gdprConsent.gdprApplies : null;
     auction.userIds.push(userId);
+    adUnitCodeToAdUnitMap[adUnitCode].pbadslot = utils.deepAccess(bidderRequest, 'ortb2Imp.ext.data.pbadslot');
     adUnitCodeToAdUnitMap[adUnitCode].bidRequestsMap[requestId] = {
       bidder,
       params,
       mediaTypes,
       source: src,
       startTime: start,
+      timeToRespond: 0,
       timedOut: false,
       timeLimit: timeout,
       bids: {}
@@ -371,12 +386,21 @@ function onBidResponse(bidResponse) {
     originalCurrency,
     width,
     height,
-    timeToRespond: latency,
+    timeToRespond,
     adId,
-    meta
+    meta,
+    floorData,
+    status,
   } = bidResponse;
 
-  auctionMap[auctionId].adUnitCodeToAdUnitMap[adUnitCode].bidRequestsMap[requestId].bids[adId] = {
+  // Put a subset of the enforcements fields in the auction level floorData
+  if (auctionMap[auctionId].floorData && floorData) {
+    Object.assign(auctionMap[auctionId].floorData, utils.pick(floorData.enforcements, ['enforceJS', 'floorDeals']));
+  }
+
+  const bidRequest = getCachedRequest(auctionId, adUnitCode, requestId);
+  bidRequest.timeToRespond = timeToRespond;
+  bidRequest.bids[adId] = {
     cpm,
     creativeId,
     requestTimestamp,
@@ -393,20 +417,45 @@ function onBidResponse(bidResponse) {
     originalCurrency,
     width,
     height,
-    latency,
+    latency: timeToRespond,
     winner: false,
     rendered: false,
     renderTime: 0,
+    floorData: utils.pick(floorData, ['floorValue', 'floorRuleValue', 'floorRule', 'floorCurrency']),
+    status,
   };
+  if (bidRequest.bids[adId].floorData) {
+    if (bidRequest.bids[adId].floorData.floorValue) {
+      bidRequest.bids[adId].floorData.floorValue *= 1000000;
+    }
+    if (bidRequest.bids[adId].floorData.floorRuleValue) {
+      bidRequest.bids[adId].floorData.floorRuleValue *= 1000000;
+    }
+  }
+}
+
+function getCachedRequest(auctionId, adUnitCode, bidId) {
+  return utils.deepAccess(auctionMap,
+    `${auctionId}.adUnitCodeToAdUnitMap.${adUnitCode}.bidRequestsMap.${bidId}`)
+}
+
+function onNoBid(args) {
+  let {auctionId, adUnitCode, bidId} = args;
+
+  let noBidRequest = getCachedRequest(auctionId, adUnitCode, bidId);
+
+  if (noBidRequest) {
+    noBidRequest.timeToRespond = Date.now() - noBidRequest.startTime;
+  }
 }
 
 function onBidTimeout(args) {
-  utils._each(args, ({auctionId, adUnitCode, bidId: requestId}) => {
-    let timedOutRequest = utils.deepAccess(auctionMap,
-      `${auctionId}.adUnitCodeToAdUnitMap.${adUnitCode}.bidRequestsMap.${requestId}`);
+  utils._each(args, ({auctionId, adUnitCode, bidId}) => {
+    let timedOutRequest = getCachedRequest(auctionId, adUnitCode, bidId);
 
     if (timedOutRequest) {
       timedOutRequest.timedOut = true;
+      timedOutRequest.timeToRespond = timedOutRequest.timeLimit;
     }
   });
 }
@@ -455,9 +504,14 @@ function onBidWon(bidResponse) {
 /**
  *
  * @param {GoogleTagSlot} slot
- * @param {string} serviceName
+ * @param {string} advertiserId
+ * @param {string} campaignId
+ * @param {string} creativeId
+ * @param {string} lineItemId
+ * @param {string} sourceAgnosticCreativeId
+ * @param {string} sourceAgnosticLineItemId
  */
-function onSlotLoadedV2({ slot }) {
+function onSlotRenderEnded({ slot, advertiserId, campaignId, creativeId, lineItemId, sourceAgnosticCreativeId, sourceAgnosticLineItemId }) {
   const renderTime = Date.now();
   const elementId = slot.getSlotElementId();
   const bidId = slot.getTargeting('hb_adid')[0];
@@ -484,6 +538,17 @@ function onSlotLoadedV2({ slot }) {
     bid.rendered = true;
     bid.renderTime = renderTime;
     adUnit.adPosition = isAtf(elementId, x, y) ? 'ATF' : 'BTF';
+    adUnit.gam = {
+      // these come in as `null` from Gpt, which when stringified does not get removed
+      // so set explicitly to undefined when not a number
+      advertiserId: utils.isNumber(advertiserId) ? advertiserId : undefined,
+      campaignId: utils.isNumber(campaignId) ? campaignId : undefined,
+      creativeId: utils.isNumber(creativeId) ? creativeId : undefined,
+      lineItemId: utils.isNumber(lineItemId) ? lineItemId : undefined,
+      sourceAgnosticCreativeId: utils.isNumber(sourceAgnosticCreativeId) ? sourceAgnosticCreativeId : undefined,
+      sourceAgnosticLineItemId: utils.isNumber(sourceAgnosticLineItemId) ? sourceAgnosticLineItemId : undefined,
+      adSlot: slot.getAdUnitPath(),
+    };
   }
 
   if (auction.adunitCodesRenderedCount === auction.adUnitCodesCount) {
@@ -620,9 +685,17 @@ function getAuctionByGoogleTagSLot(slot) {
 }
 
 function buildAuctionPayload(auction) {
-  let {startTime, endTime, state, timeout, auctionOrder, userIds, adUnitCodeToAdUnitMap, id} = auction;
+  let {startTime, endTime, state, timeout, auctionOrder, floorData, userIds, adUnitCodeToAdUnitMap, id, regs} = auction;
   const auctionId = id;
-  let {orgId, publisherPlatformId, publisherAccountId, campaign, testCode, configId, optimizerConfig} = analyticsConfig;
+  let {orgId, publisherPlatformId, publisherAccountId, sessionId, campaign, testCode, configId, optimizerConfig} = analyticsConfig;
+
+  if (window.ox_apollo) {
+    let data = window.ox_apollo.getData();
+    optimizerConfig = JSON.stringify(data);
+    if (data.experiment) {
+      testCode = data.experiment;
+    }
+  }
 
   return {
     auctionId,
@@ -631,6 +704,7 @@ function buildAuctionPayload(auction) {
     orgId,
     publisherPlatformId,
     publisherAccountId,
+    sessionId,
     configId,
     optimizerConfig,
     campaign,
@@ -646,27 +720,31 @@ function buildAuctionPayload(auction) {
     // return an array of module name that have user data
     userIdProviders: buildUserIdProviders(userIds),
     adUnits: buildAdUnitsPayload(adUnitCodeToAdUnitMap),
+    floorData,
+    regs
   };
 
   function buildAdUnitsPayload(adUnitCodeToAdUnitMap) {
     return utils._map(adUnitCodeToAdUnitMap, (adUnit) => {
-      let {code, adPosition} = adUnit;
-
+      let {code, pbadslot, adPosition, gam} = adUnit;
       return {
         code,
+        gam,
         adPosition,
-        bidRequests: buildBidRequestPayload(adUnit.bidRequestsMap)
+        bidRequests: buildBidRequestPayload(adUnit.bidRequestsMap),
+        pbadslot
       };
 
       function buildBidRequestPayload(bidRequestsMap) {
         return utils._map(bidRequestsMap, (bidRequest) => {
-          let {bidder, source, bids, mediaTypes, timeLimit, timedOut} = bidRequest;
+          let {bidder, source, bids, mediaTypes, timeToRespond, timeLimit, timedOut} = bidRequest;
           return {
             bidder,
             source,
             hasBidderResponded: Object.keys(bids).length > 0,
             availableAdSizes: getMediaTypeSizes(mediaTypes),
             availableMediaTypes: getMediaTypes(mediaTypes),
+            timeToRespond,
             timeLimit,
             timedOut,
             bidResponses: utils._map(bidRequest.bids, (bidderBidResponse) => {
@@ -679,6 +757,7 @@ function buildAuctionPayload(auction) {
                 mediaType,
                 dealId,
                 ttl,
+                originalCpm,
                 netRevenue,
                 currency,
                 width,
@@ -686,12 +765,14 @@ function buildAuctionPayload(auction) {
                 latency,
                 winner,
                 rendered,
-                renderTime
+                renderTime,
+                floorData,
+                status,
               } = bidderBidResponse;
 
               return {
                 bidId: adId,
-                microCpm: cpm * 1000000,
+                microCpm: status !== BID_REJECTED ? cpm * 1000000 : originalCpm * 1000000,
                 netRevenue,
                 currency,
                 mediaType,
@@ -706,7 +787,9 @@ function buildAuctionPayload(auction) {
                 ts,
                 rendered,
                 renderTime,
-                meta
+                meta,
+                floorData,
+                status,
               }
             })
           }
@@ -732,6 +815,12 @@ function buildAuctionPayload(auction) {
         break;
       case 'lipb':
         normalizedId = idOrIdObject.lipbid;
+        break;
+      case 'uid2':
+        normalizedId = idOrIdObject.id;
+        break;
+      case 'flocId':
+        normalizedId = idOrIdObject.id;
         break;
       default:
         normalizedId = idOrIdObject;
