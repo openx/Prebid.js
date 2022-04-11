@@ -1,6 +1,6 @@
 
 import { submodule } from '../src/hook.js';
-import { mergeDeep, isPlainObject, logMessage, deepSetValue } from '../src/utils.js';
+import { mergeDeep, isPlainObject, logMessage, deepSetValue, generateUUID } from '../src/utils.js';
 import { getGlobal } from '../src/prebidGlobal.js';
 import {config} from '../src/config.js';
 
@@ -13,40 +13,60 @@ const SUBMODULE_NAME = 'paf';
  * @param {Object} rtdConfig
  * @param {Object} userConsent
  */
-function getBidRequestData(reqBidsConfigObj, callback, rtdConfig, userConsent) {
-
+function getBidRequestData(reqBidsConfigObj, onDone, rtdConfig, userConsent) {
+  logMessage('DEBUG(paf):', rtdConfig);
   let idsAndPreferences;
-  let seed;
   const adUnits = (reqBidsConfigObj.adUnits || getGlobal().adUnits);
 
-  if (window.PAF) {
+  if (rtdConfig.params && rtdConfig.params.proxyHostName && window.PAF) {
     idsAndPreferences = window.PAF.getIdsAndPreferences();
     if (!idsAndPreferences) {
-      callback();
+      onDone();
       return;
     }
+
+    let transaction_ids = [];
+    for (var i=0; i < adUnits.length; i++) {
+      const uuid = generateUUID();
+      transaction_ids.push(uuid)
+      deepSetValue(adUnits[i], `ortb2Imp.ext.data.paf.transaction_id`, uuid)
+    }
+
     logMessage('DEBUG(idsAndPreferences):', idsAndPreferences);
-    seed = rtdConfig.multipleTransactions ? window.PAF.getSeed() : window.PAF.getSeed(adUnits.length);
-    logMessage('DEBUG(seed):', seed);
+    window.PAF.createSeed({proxyHostName: rtdConfig.params.proxyHostName, callback: function (seed) {setData(seed, rtdConfig, onDone);}}, transaction_ids)
   } else {
-    callback();
+    onDone();
     return;
   }
+}
 
-  if (seed.transaction_ids) {
-    for (var i=0; i < adUnits.length; i++) {
-      deepSetValue(adUnits[i], `ortb2Imp.ext.data.paf_transaction_id`, seed.transaction_ids[i])
-    }
+/**
+ * Lazy merge objects.
+ * @param {Object} target
+ * @param {Object} source
+ */
+ function mergeLazy(target, source) {
+  if (!isPlainObject(target)) {
+    target = {};
   }
 
+  if (!isPlainObject(source)) {
+    source = {};
+  }
+
+  return mergeDeep(target, source);
+}
+
+function setData(seed, rtdConfig, onDone) {
+  logMessage('DEBUG(seed):', seed);
   const pafOrtb2 = {
     ortb2: {
       user: {
         ext: {
           paf: {
-            seed: seed,
-            identifiers: idsAndPreferences.identifiers,
-            preferences: idsAndPreferences.preferences
+            transmission: {
+              seed: seed
+            }
           }
         }
       }
@@ -72,25 +92,7 @@ function getBidRequestData(reqBidsConfigObj, callback, rtdConfig, userConsent) {
     logMessage('DEBUG(set ortb2):', pafOrtb2);
     config.setConfig({ortb2: mergeLazy(ortb2, pafOrtb2.ortb2)});
   }
-
-  callback();
-}
-
-/**
- * Lazy merge objects.
- * @param {Object} target
- * @param {Object} source
- */
- function mergeLazy(target, source) {
-  if (!isPlainObject(target)) {
-    target = {};
-  }
-
-  if (!isPlainObject(source)) {
-    source = {};
-  }
-
-  return mergeDeep(target, source);
+  onDone();
 }
 
 /** @type {RtdSubmodule} */
