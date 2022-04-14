@@ -1,6 +1,6 @@
 
 import { submodule } from '../src/hook.js';
-import { mergeDeep, isPlainObject, logMessage, deepSetValue, generateUUID } from '../src/utils.js';
+import { mergeDeep, isPlainObject, logError, logMessage, deepSetValue, generateUUID } from '../src/utils.js';
 import { getGlobal } from '../src/prebidGlobal.js';
 import {config} from '../src/config.js';
 
@@ -14,7 +14,6 @@ const SUBMODULE_NAME = 'paf';
  * @param {Object} userConsent
  */
 function getBidRequestData(reqBidsConfigObj, onDone, rtdConfig, userConsent) {
-  logMessage('DEBUG(paf):', rtdConfig);
   let idsAndPreferences;
   const adUnits = (reqBidsConfigObj.adUnits || getGlobal().adUnits);
 
@@ -22,6 +21,7 @@ function getBidRequestData(reqBidsConfigObj, onDone, rtdConfig, userConsent) {
     idsAndPreferences = window.PAF.getIdsAndPreferences();
     if (!idsAndPreferences) {
       onDone();
+      logMessage(SUBMODULE_NAME, 'No id and preferences. Not creating Seed.');
       return;
     }
 
@@ -32,7 +32,6 @@ function getBidRequestData(reqBidsConfigObj, onDone, rtdConfig, userConsent) {
       deepSetValue(adUnits[i], `ortb2Imp.ext.data.paf.transaction_id`, uuid)
     }
 
-    logMessage('DEBUG(idsAndPreferences):', idsAndPreferences);
     window.PAF.createSeed({proxyHostName: rtdConfig.params.proxyHostName, callback: function (seed) {setData(seed, rtdConfig, onDone);}}, transaction_ids)
   } else {
     onDone();
@@ -58,14 +57,19 @@ function getBidRequestData(reqBidsConfigObj, onDone, rtdConfig, userConsent) {
 }
 
 function setData(seed, rtdConfig, onDone) {
-  logMessage('DEBUG(seed):', seed);
+  if (!seed) {
+    logError(SUBMODULE_NAME, 'Could not createSeed');
+    onDone()
+    return;
+  }
+  logMessage(SUBMODULE_NAME, 'Created Seed:', seed);
   const pafOrtb2 = {
     ortb2: {
       user: {
         ext: {
           paf: {
             transmission: {
-              seed: seed
+              seed
             }
           }
         }
@@ -75,7 +79,7 @@ function setData(seed, rtdConfig, onDone) {
 
   if (rtdConfig.params && rtdConfig.params.bidders) {
     let bidderConfig = config.getBidderConfig();
-    logMessage(`set ortb2 for: ${rtdConfig.params.bidders}`, pafOrtb2);
+    logMessage(SUBMODULE_NAME, `set ortb2 for: ${rtdConfig.params.bidders}`, pafOrtb2);
     rtdConfig.params.bidders.forEach(bidder => {
       let bidderOptions = {};
       if (isPlainObject(bidderConfig[bidder])) {
@@ -89,7 +93,7 @@ function setData(seed, rtdConfig, onDone) {
     });
   } else {
     let ortb2 = config.getConfig('ortb2') || {};
-    logMessage('DEBUG(set ortb2):', pafOrtb2);
+    logMessage(SUBMODULE_NAME, 'set ortb2:', pafOrtb2);
     config.setConfig({ortb2: mergeLazy(ortb2, pafOrtb2.ortb2)});
   }
   onDone();

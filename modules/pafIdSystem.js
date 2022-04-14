@@ -32,8 +32,8 @@
     * @returns {IdResponse|undefined}
     */
    getId(config, consentData) {
-     if (window.PAF) {
-       return {id: window.PAF.getIdsAndPreferences()};
+     if (window.PAF &&  window.PAF.getIdsAndPreferences()) {
+        return {id: window.PAF.getIdsAndPreferences()};
      } else {
        return undefined;
      }

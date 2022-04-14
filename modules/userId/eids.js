@@ -314,6 +314,25 @@ export const USER_IDS_CONFIG = {
       return data.envelope;
     }
   },
+
+  'pafData': {
+    getValue: function(data) {
+      return data.identifiers[0].value;
+    },
+    source: 'paf',
+    atype: 1,
+    getEidExt: function(data) {
+      return {preferences: data.preferences};
+    },
+    getUidExt: function(data) {
+      const id = data.identifiers[0];
+      return {
+        version: id.version,
+        type: id.type,
+        source: id.source
+      };
+    }
+  }
 };
 
 // this function will create an eid object for the given UserId sub-module

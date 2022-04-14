@@ -7,8 +7,8 @@ Both modules are required. This module will pass transmission requests to your p
 while the pafIdSystem will pass the pafData.
 
 Background information:
-https://github.com/prebid/addressability-framework
-https://github.com/prebid/paf-mvp-implementation
+- [prebid/addressability-framework](https://github.com/prebid/addressability-framework)
+- [prebid/paf-mvp-implementation](https://github.com/prebid/paf-mvp-implementation)
 
 
 
@@ -50,7 +50,7 @@ pbjs.setConfig(
 | name | String | Real time data module name | Always 'paf' |
 | waitForIt | Boolean | Required to ensure that the auction is delayed until prefetch is complete | Optional. Defaults to false |
 | params | Object | | |
-| params.proxyHostName | String | URL of the PAF Proxy which will generate seeds. | Required |
+| params.proxyHostName | String | servername of the PAF Proxy which will generate seeds. | Required |
 | params.bidders | Array | List of bidders to restrict the data to. | Optional |
 
 ### Data for bidders
@@ -78,6 +78,7 @@ The following is an example of the format of the data:
         }
     }
 }
+```
 
 
 ```json
