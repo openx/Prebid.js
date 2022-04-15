@@ -1,4 +1,4 @@
-# Prebid Addreaability Framework (OneKey)
+# Prebid Addressability Framework (OneKey)
 
 Insert description here
 https://github.com/prebid/addressability-framework

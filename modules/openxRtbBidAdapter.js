@@ -10,8 +10,10 @@ const VIDEO_TARGETING = ['startdelay', 'mimes', 'minduration', 'maxduration',
   'startdelay', 'skippable', 'playbackmethod', 'api', 'protocols', 'boxingallowed',
   'linearity', 'delivery', 'protocol', 'placement', 'minbitrate', 'maxbitrate', 'ext'];
 export const REQUEST_URL = 'https://rtb.openx.net/openrtbb/prebidjs';
+export const SYNC_URL = 'https://u.openx.net/w/1.0/pd';
+export const DEFAULT_PH = '2d1251ae-7f3a-47cf-bd2a-2f288854a0ba';
 export const spec = {
-  code: 'paf',
+  code: 'openx2',
   supportedMediaTypes: [BANNER, VIDEO],
   isBidRequestValid,
   buildRequests,
@@ -30,7 +32,16 @@ function transformBidParams(params, isOpenRtb) {
 }
 
 function isBidRequestValid(bidRequest) {
-  return true;
+  const hasDelDomainOrPlatform = bidRequest.params.delDomain ||
+    bidRequest.params.platform;
+
+  if (utils.deepAccess(bidRequest, 'mediaTypes.banner') &&
+    hasDelDomainOrPlatform) {
+    return !!bidRequest.params.unit ||
+      utils.deepAccess(bidRequest, 'mediaTypes.banner.sizes.length') > 0;
+  }
+
+  return !!(bidRequest.params.unit && hasDelDomainOrPlatform);
 }
 
 function buildRequests(bids, bidderRequest) {
@@ -190,10 +201,17 @@ function getBaseRequest(bid, bidderRequest) {
       language: window.navigator.language.split('-').shift()
     },
     ext: {
-      bc: bid.params.bc || `${bidderConfig}_${bidderVersion}`
+      bc: bid.params.bc || `${bidderConfig}_${bidderVersion}`,
+      frontier_flags: {is_filtered: true}
     }
   };
 
+  if (bid.params.platform) {
+    utils.deepSetValue(req, 'ext.platform', bid.params.platform);
+  }
+  if (bid.params.delDomain) {
+    utils.deepSetValue(req, 'ext.delDomain', bid.params.delDomain);
+  }
   if (bid.params.test) {
     req.test = 1
   }
@@ -257,61 +275,55 @@ function getFloor(bid, mediaType) {
 }
 
 function interpretResponse(resp, req) {
+  // pass these from request to the responses for use in userSync
+  if (req.data.ext) {
+    if (req.data.ext.delDomain) {
+      utils.deepSetValue(resp, 'body.ext.delDomain', req.data.ext.delDomain);
+    }
+    if (req.data.ext.platform) {
+      utils.deepSetValue(resp, 'body.ext.platform', req.data.ext.platform);
+    }
+  }
 
   const respBody = resp.body;
+  if ('nbr' in respBody) {
+    return [];
+  }
+
   let bids = [];
-  req.data.imp.forEach(imp => {
-    let transmissions = [
-      {
-          "version": "0.1",
-          "receiver": "ssp1.com",
-          "status": "success",
-          "details": "",
-          "source": {
-              "domain": "ssp1.com",
-              "timestamp": 1639589531,
-              "signature": "12345_signature"
-          }
-      },
-      {
-          "version": "0.1",
-          "receiver": "ssp2.com",
-          "status": "success",
-          "details": "",
-          "source": {
-              "domain": "ssp2.com",
-              "timestamp": 1639589531,
-              "signature": "12345_signature"
-          }
-      },
-      {
-          "version": "0.1",
-          "receiver": "dsp.com",
-          "status": "success",
-          "details": "",
-          "source": {
-              "domain": "dsp.com",
-              "timestamp": 1639589531,
-              "signature": "12345_signature"
-          }
-      }
-    ];
-    bids.push({
-        ad: `<div><h1>Test Ad</h1></div>`,
-        requestId: imp.id,
-        cpm: 1,
-        width: imp.banner.format[0].w,
-        height: imp.banner.format[0].h,
-        creativeId: "test-crid",
-        currency: 'USD',
+  respBody.seatbid.forEach(seatbid => {
+    bids = [...bids, ...seatbid.bid.map(bid => {
+      let response = {
+        requestId: bid.impid,
+        cpm: bid.price,
+        width: bid.w,
+        height: bid.h,
+        creativeId: bid.crid,
+        dealId: bid.dealid,
+        currency: respBody.cur || 'USD',
         netRevenue: true,
         ttl: 300,
-        mediaType: 'banner',
-        meta: {
-          paf: {
-            transmissions: transmissions
+        mediaType: 'banner' in req.data.imp[0] ? BANNER : VIDEO,
+        meta: { advertiserDomains: bid.adomain }
+      };
+
+      if (response.mediaType === VIDEO) {
+        if (bid.nurl) {
+          response.vastUrl = bid.nurl;
+        } else {
+          response.vastXml = bid.adm;
         }
-      }});
+      } else {
+        response.ad = bid.adm;
+      }
+
+      if (bid.ext) {
+        response.meta.networkId = bid.ext.dsp_id;
+        response.meta.advertiserId = bid.ext.buyer_id;
+        response.meta.brandId = bid.ext.brand_id;
+      }
+      return response
+    })];
   });
 
   return bids;
@@ -325,5 +337,30 @@ function interpretResponse(resp, req) {
  * @return {{type: (string), url: (*|string)}[]}
  */
 function getUserSyncs(syncOptions, responses, gdprConsent, uspConsent) {
-  return undefined;
+  if (syncOptions.iframeEnabled || syncOptions.pixelEnabled) {
+    let pixelType = syncOptions.iframeEnabled ? 'iframe' : 'image';
+    let queryParamStrings = [];
+    let syncUrl = SYNC_URL;
+    if (gdprConsent) {
+      queryParamStrings.push('gdpr=' + (gdprConsent.gdprApplies ? 1 : 0));
+      queryParamStrings.push('gdpr_consent=' + encodeURIComponent(gdprConsent.consentString || ''));
+    }
+    if (uspConsent) {
+      queryParamStrings.push('us_privacy=' + encodeURIComponent(uspConsent));
+    }
+    if (responses.length > 0 && responses[0].body && responses[0].body.ext) {
+      const ext = responses[0].body.ext;
+      if (ext.delDomain) {
+        syncUrl = `https://${ext.delDomain}/w/1.0/pd`
+      } else if (ext.platform) {
+        queryParamStrings.push('ph=' + ext.platform)
+      }
+    } else {
+      queryParamStrings.push('ph=' + DEFAULT_PH)
+    }
+    return [{
+      type: pixelType,
+      url: `${syncUrl}${queryParamStrings.length > 0 ? '?' + queryParamStrings.join('&') : ''}`
+    }];
+  }
 }
