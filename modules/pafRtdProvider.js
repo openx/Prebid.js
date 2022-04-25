@@ -32,7 +32,7 @@ function getBidRequestData(reqBidsConfigObj, onDone, rtdConfig, userConsent) {
       deepSetValue(adUnits[i], `ortb2Imp.ext.data.paf.transaction_id`, uuid)
     }
 
-    window.PAF.createSeed({proxyHostName: rtdConfig.params.proxyHostName, callback: function (seed) {setData(seed, rtdConfig, onDone);}}, transaction_ids)
+    window.PAF.generateSeed({proxyHostName: rtdConfig.params.proxyHostName, callback: function (seed) {setData(seed, rtdConfig, onDone);}}, transaction_ids)
   } else {
     onDone();
     return;
