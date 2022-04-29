@@ -1,12 +1,14 @@
 # Prebid Addressability Framework (OneKey)
 
-Insert description here
-https://github.com/prebid/addressability-framework
-https://github.com/prebid/paf-mvp-implementation
+The PAF real-time data module in Prebid has been built so that publishers
+can quickly and easily setup the Prebid Addressability Framework and utilize OneKey.
+This module is used along with the pafRtdProvider to pass PAF data to your partners.
+Both modules are required. This module will pass paData to your partners
+while the pafRtdProvider will pass the transmission requests.
 
-## PAF Registration
-
-insert info here
+Background information:
+- [prebid/addressability-framework](https://github.com/prebid/addressability-framework)
+- [prebid/paf-mvp-implementation](https://github.com/prebid/paf-mvp-implementation)
 
 ## PAF Configuration
 

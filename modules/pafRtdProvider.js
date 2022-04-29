@@ -13,7 +13,7 @@ const SUBMODULE_NAME = 'paf';
  * @param {Object} rtdConfig
  * @param {Object} userConsent
  */
-function getBidRequestData(reqBidsConfigObj, onDone, rtdConfig, userConsent) {
+export function getBidRequestData(reqBidsConfigObj, onDone, rtdConfig, userConsent) {
   let idsAndPreferences;
   const adUnits = (reqBidsConfigObj.adUnits || getGlobal().adUnits);
 
@@ -25,17 +25,16 @@ function getBidRequestData(reqBidsConfigObj, onDone, rtdConfig, userConsent) {
       return;
     }
 
-    let transaction_ids = [];
-    for (var i=0; i < adUnits.length; i++) {
+    let transactionIds = [];
+    for (var i = 0; i < adUnits.length; i++) {
       const uuid = generateUUID();
-      transaction_ids.push(uuid)
+      transactionIds.push(uuid)
       deepSetValue(adUnits[i], `ortb2Imp.ext.data.paf.transaction_id`, uuid)
     }
 
-    window.PAF.generateSeed({proxyHostName: rtdConfig.params.proxyHostName, callback: function (seed) {setData(seed, rtdConfig, onDone);}}, transaction_ids)
+    window.PAF.generateSeed({proxyHostName: rtdConfig.params.proxyHostName, callback: function (seed) { setData(seed, rtdConfig, onDone); }}, transactionIds)
   } else {
     onDone();
-    return;
   }
 }
 
@@ -44,7 +43,7 @@ function getBidRequestData(reqBidsConfigObj, onDone, rtdConfig, userConsent) {
  * @param {Object} target
  * @param {Object} source
  */
- function mergeLazy(target, source) {
+function mergeLazy(target, source) {
   if (!isPlainObject(target)) {
     target = {};
   }
@@ -56,7 +55,7 @@ function getBidRequestData(reqBidsConfigObj, onDone, rtdConfig, userConsent) {
   return mergeDeep(target, source);
 }
 
-function setData(seed, rtdConfig, onDone) {
+export function setData(seed, rtdConfig, onDone) {
   if (!seed) {
     logError(SUBMODULE_NAME, 'Could not createSeed');
     onDone()

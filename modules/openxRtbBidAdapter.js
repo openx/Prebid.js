@@ -2,7 +2,7 @@ import {config} from '../src/config.js';
 import {registerBidder} from '../src/adapters/bidderFactory.js';
 import * as utils from '../src/utils.js';
 import {BANNER, VIDEO} from '../src/mediaTypes.js';
-import includes from 'core-js-pure/features/array/includes.js'
+import {includes} from '../src/polyfill.js';
 
 const bidderConfig = 'hb_pb_ortb';
 const bidderVersion = '1.0';

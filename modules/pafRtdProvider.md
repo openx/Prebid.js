@@ -10,8 +10,6 @@ Background information:
 - [prebid/addressability-framework](https://github.com/prebid/addressability-framework)
 - [prebid/paf-mvp-implementation](https://github.com/prebid/paf-mvp-implementation)
 
-
-
 ### Publisher Usage
 
 The paf RTD module depends on paf-lib.js existing in the page.
@@ -92,3 +90,37 @@ The following is an example of the format of the data:
     }
 }
 ```
+
+### Bidder Responses
+
+Bidders who are part of the Prebid Addressability Framework and receive PAF
+transmissions are required to return transmission responses as outlined in
+[prebid/addressability-framework](https://github.com/prebid/addressability-framework/blob/main/mvp-spec/ad-auction.md). Transmission responses should be appended to bids
+along with the releveant content_id using the meta.paf field. The paf-lib will
+be responsible for collecting all of the transmission responses.
+
+Below is an example of setting a transmission response:
+```javascript
+bid.meta.paf = {
+    "content_id": "90141190-26fe-497c-acee-4d2b649c2112",
+    "transmission": {
+        "version": "0.1",
+        "contents": [
+            {
+                "transaction_id": "f55a401d-e8bb-4de1-a3d2-fa95619393e8",
+                "content_id": "90141190-26fe-497c-acee-4d2b649c2112"
+            }
+        ],
+        "status": "success",
+        "details": "",
+        "receiver": "dsp1.com",
+        "source": {
+            "domain": "dsp1.com",
+            "timestamp": 1639589531,
+            "signature": "d01c6e83f14b4f057c2a2a86d320e2454fc0c60df4645518d993b5f40019d24c"
+        },
+        "children": []
+    }
+}
+```
+

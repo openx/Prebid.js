@@ -315,22 +315,29 @@ export const USER_IDS_CONFIG = {
     }
   },
 
+  // PAF Data
   'pafData': {
     getValue: function(data) {
-      return data.identifiers[0].value;
+      if (data && Array.isArray(data.identifiers) && data.identifiers[0]) {
+        return data.identifiers[0].value;
+      }
     },
     source: 'paf',
     atype: 1,
     getEidExt: function(data) {
-      return {preferences: data.preferences};
+      if (data && data.preferences) {
+        return {preferences: data.preferences};
+      }
     },
     getUidExt: function(data) {
-      const id = data.identifiers[0];
-      return {
-        version: id.version,
-        type: id.type,
-        source: id.source
-      };
+      if (data && Array.isArray(data.identifiers) && data.identifiers[0]) {
+        const id = data.identifiers[0];
+        return {
+          version: id.version,
+          type: id.type,
+          source: id.source
+        };
+      }
     }
   }
 };
