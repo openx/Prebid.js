@@ -6,6 +6,9 @@ import {config} from '../src/config.js';
 
 const SUBMODULE_NAME = 'paf';
 
+window.PAF = window.PAF || {};
+window.PAF.queue = window.PAF.queue || [];
+
 /**
  *
  * @param {Object} reqBidsConfigObj
@@ -14,28 +17,40 @@ const SUBMODULE_NAME = 'paf';
  * @param {Object} userConsent
  */
 export function getBidRequestData(reqBidsConfigObj, onDone, rtdConfig, userConsent) {
-  let idsAndPreferences;
-  const adUnits = (reqBidsConfigObj.adUnits || getGlobal().adUnits);
-
-  if (rtdConfig.params && rtdConfig.params.proxyHostName && window.PAF) {
-    idsAndPreferences = window.PAF.getIdsAndPreferences();
-    if (!idsAndPreferences) {
-      onDone();
-      logMessage(SUBMODULE_NAME, 'No id and preferences. Not creating Seed.');
-      return;
-    }
-
-    let transactionIds = [];
-    for (var i = 0; i < adUnits.length; i++) {
-      const uuid = generateUUID();
-      transactionIds.push(uuid)
-      deepSetValue(adUnits[i], `ortb2Imp.ext.data.paf.transaction_id`, uuid)
-    }
-
-    window.PAF.generateSeed({proxyHostName: rtdConfig.params.proxyHostName, callback: function (seed) { setData(seed, rtdConfig, onDone); }}, transactionIds)
-  } else {
+  if (rtdConfig.params === undefined || rtdConfig.params.proxyHostName === undefined) {
     onDone();
+    return
   }
+  window.PAF.queue.push(function() {
+    const idsAndPreferencesAsyncOptions = {
+      proxyHostName: rtdConfig.params.proxyHostName,
+      callback: function (idsAndPreferences) {
+        if (!idsAndPreferences) {
+          onDone();
+          logMessage(SUBMODULE_NAME, 'No id and preferences. Not creating Seed.');
+          return;
+        }
+    
+        const adUnits = (reqBidsConfigObj.adUnits || getGlobal().adUnits);
+        let transactionIds = [];
+        for (var i = 0; i < adUnits.length; i++) {
+          const uuid = generateUUID();
+          transactionIds.push(uuid)
+          deepSetValue(adUnits[i], `ortb2Imp.ext.data.paf.transaction_id`, uuid)
+        }
+    
+        const generateSeedOption = {
+          proxyHostName: rtdConfig.params.proxyHostName,
+          callback: function (seed) {
+            setData(seed, rtdConfig, onDone);
+          }
+        }
+        window.PAF.generateSeed(generateSeedOption, transactionIds)
+      }
+    }; 
+
+    window.PAF.getIdsAndPreferencesAsync(idsAndPreferencesAsyncOptions);
+  });
 }
 
 /**
