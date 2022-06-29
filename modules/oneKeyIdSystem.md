@@ -1,33 +1,33 @@
 # Prebid Addressability Framework (OneKey)
 
-The PAF real-time data module in Prebid has been built so that publishers
-can quickly and easily setup the Prebid Addressability Framework and utilize OneKey.
-This module is used along with the pafRtdProvider to pass PAF data to your partners.
-Both modules are required. This module will pass paData to your partners
-while the pafRtdProvider will pass the transmission requests.
+The OneKey real-time data module in Prebid has been built so that publishers
+can quickly and easily setup the OneKey Addressability Framework.
+This module is used along with the oneKeyRtdProvider to pass OneKey data to your partners.
+Both modules are required. This module will pass oneKeyData to your partners
+while the oneKeyRtdProvider will pass the transmission requests.
 
 Background information:
 - [prebid/addressability-framework](https://github.com/prebid/addressability-framework)
 - [prebid/paf-mvp-implementation](https://github.com/prebid/paf-mvp-implementation)
 
-## PAF Configuration
+## OneKey Configuration
 
-The pafData module depends on paf-lib.js existing in the page.
+The oneKeyData module depends on paf-lib.js existing in the page.
 
-Compile the pafData module into your Prebid build.
-You will also want to add the pafRtdProvider module as well.
+Compile the oneKeyData module into your Prebid build.
+You will also want to add the oneKeyRtdProvider module as well.
 
-`gulp build --modules=userId,pafIdSystem,rtdModule,pafRtdProvider,appnexusBidAdapter`
+`gulp build --modules=userId,oneKeyIdSystem,rtdModule,oneKeyRtdProvider,appnexusBidAdapter`
 
-There are no custom configuration parameters for PAF. The module
-will retrieve the PAF data from the page if available and pass the 
+There are no custom configuration parameters for OneKey. The module
+will retrieve the OneKey data from the page if available and pass the 
 information to bidders. Here is a configuration example:
 
 ```javascript
 pbjs.setConfig({
   userSync: {
       userIds: [{
-          name: "pafData",
+          name: "oneKeyData",
           params: {}
       }]
     }],

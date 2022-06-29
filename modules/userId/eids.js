@@ -315,8 +315,8 @@ export const USER_IDS_CONFIG = {
     }
   },
 
-  // PAF Data
-  'pafData': {
+  // OneKey Data
+  'oneKeyData': {
     getValue: function(data) {
       if (data && Array.isArray(data.identifiers) && data.identifiers[0]) {
         return data.identifiers[0].value;

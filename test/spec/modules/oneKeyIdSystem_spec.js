@@ -1,4 +1,4 @@
-import { pafIdSubmodule } from 'modules/pafIdSystem'
+import { oneKeyIdSubmodule } from 'modules/oneKeyIdSystem'
 import { config } from 'src/config.js';
 import {find} from 'src/polyfill.js';
 import { init, requestBidsHook, setSubmoduleRegistry } from 'modules/userId/index.js';
@@ -34,7 +34,7 @@ function getConfigMock() {
     userSync: {
       syncDelay: 0,
       userIds: [{
-        name: 'pafData'
+        name: 'oneKeyData'
       }]
     }
   }
@@ -55,29 +55,31 @@ function getAdUnitMock(code = 'adUnit-code') {
   };
 }
 
-describe('pafData module', function () {
-  it('returns undefined if paf-lib is not found', function () {
-    const moduleIdResponse = pafIdSubmodule.getId();
-    expect(moduleIdResponse).to.be.undefined;
-  })
-  it('returns undefined if no Data', function () {
-    window.PAF = {
-      getIdsAndPreferences() {
-        return undefined;
-      }
-    }
-    const moduleIdResponse = pafIdSubmodule.getId();
-    expect(moduleIdResponse).to.be.undefined;
-  })
-  it('gets pafData from page context', function () {
-    window.PAF = {
-      getIdsAndPreferences() {
-        return idsAndPrefs;
-      }
-    }
-    const moduleIdResponse = pafIdSubmodule.getId();
-    expect(moduleIdResponse).to.deep.equal({id: idsAndPrefs});
-  })
+describe('oneKeyData module', function () {
+  it('create PAF object with operation queue if they don\'t exist yet and return object with callback', function () {
+    const moduleIdResponse = oneKeyIdSubmodule.getId();
+    expect(window.PAF.queue.length).to.equal(1);
+    expect(moduleIdResponse.callback).to.be.an('function');
+  });
+
+  // it('returns undefined if no Data', function () {
+  //   window.PAF = {
+  //     getIdsAndPreferences() {
+  //       return undefined;
+  //     }
+  //   }
+  //   const moduleIdResponse = oneKeyIdSubmodule.getId();
+  //   expect(moduleIdResponse).to.be.undefined;
+  // })
+  // it('gets pafData from page context', function () {
+  //   window.PAF = {
+  //     getIdsAndPreferences() {
+  //       return idsAndPrefs;
+  //     }
+  //   }
+  //   const moduleIdResponse = pafIdSubmodule.getId();
+  //   expect(moduleIdResponse).to.deep.equal({id: idsAndPrefs});
+  // })
 
   // this test format was copied from other id module tests
   // but it is failing on the hook and im not sure why, if someone
