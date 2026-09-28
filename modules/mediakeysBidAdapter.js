@@ -15,6 +15,8 @@ import {
   logError,
   logWarn,
   mergeDeep,
+  parseGPTSingleSizeArrayToRtbSize,
+  sizeTupleToRtbSize,
   triggerPixel
 } from '../src/utils.js';
 import { registerBidder } from '../src/adapters/bidderFactory.js';
@@ -66,7 +68,7 @@ const ORTB_VIDEO_PARAMS = {
   h: value => isInteger(value),
   startdelay: value => isInteger(value),
   placement: value => [1, 2, 3, 4, 5].indexOf(value) !== -1,
-  plcmt: value => [1, 2, 3, 4].indexOf(value) !== -1,
+  plcmt: value => [1, 2, 3, 4, 5, 6].indexOf(value) !== -1,
   linearity: value => [1, 2].indexOf(value) !== -1,
   skip: value => [0, 1].indexOf(value) !== -1,
   skipmin: value => isInteger(value),
@@ -77,10 +79,10 @@ const ORTB_VIDEO_PARAMS = {
   minbitrate: value => isInteger(value),
   maxbitrate: value => isInteger(value),
   boxingallowed: value => [0, 1].indexOf(value) !== -1,
-  playbackmethod: value => Array.isArray(value) && value.every(v => [1, 2, 3, 4, 5, 6].indexOf(v) !== -1),
+  playbackmethod: value => Array.isArray(value) && value.every(v => [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].indexOf(v) !== -1),
   playbackend: value => [1, 2, 3].indexOf(value) !== -1,
   delivery: value => [1, 2, 3].indexOf(value) !== -1,
-  pos: value => [0, 1, 2, 3, 4, 5, 6, 7].indexOf(value) !== -1,
+  pos: value => [0, 1, 2, 3, 4, 5, 6, 7, 8].indexOf(value) !== -1,
   api: value => Array.isArray(value) && value.every(v => [1, 2, 3, 4, 5, 6].indexOf(v) !== -1)
 };
 
@@ -206,6 +208,38 @@ function createOrtbTemplate() {
   };
 }
 
+function addRequestSignals(payload, validBidRequests, bidderRequest) {
+  const { gdprConsent, uspConsent } = bidderRequest || {};
+  const userExt = cleanObj({
+    consent: gdprConsent?.consentString,
+    eids: deepAccess(validBidRequests[0], 'userIdAsEids')
+  });
+  const regsExt = cleanObj({
+    gdpr: gdprConsent ? Number(Boolean(gdprConsent.gdprApplies)) : undefined,
+    us_privacy: uspConsent
+  });
+  const schain = deepAccess(validBidRequests[0], 'ortb2.source.ext.schain');
+
+  if (schain) {
+    deepSetValue(payload, 'source.ext.schain', schain);
+  }
+  if (Object.keys(userExt).length) {
+    deepSetValue(payload, 'user.ext', {
+      ...deepAccess(payload, 'user.ext', {}),
+      ...userExt
+    });
+  }
+  if (Object.keys(regsExt).length) {
+    deepSetValue(payload, 'regs.ext', {
+      ...deepAccess(payload, 'regs.ext', {}),
+      ...regsExt
+    });
+  }
+  if (config.getConfig('coppa') === true) {
+    deepSetValue(payload, 'regs.coppa', 1);
+  }
+}
+
 /**
  * Returns an openRtb 2.5 banner object.
  *
@@ -219,23 +253,17 @@ function createBannerImp(bid) {
   if (!isArray(sizes) || !sizes.length) {
     logWarn(`${BIDDER_CODE}: mediaTypes.banner.size missing for adunit: ${bid.params.adUnit}. Ignoring the banner impression in the adunit.`);
   } else {
-    const banner = {};
-
-    banner.w = parseInt(sizes[0][0], 10);
-    banner.h = parseInt(sizes[0][1], 10);
-
-    const format = [];
-    sizes.forEach(function (size) {
-      if (size.length && size.length > 1) {
-        format.push({ w: size[0], h: size[1] });
-      }
-    });
-    banner.format = format;
-
-    banner.topframe = inIframe() ? 0 : 1;
-    banner.pos = params.pos || 0;
-
-    return banner;
+    return {
+      ...sizeTupleToRtbSize([
+        parseInt(sizes[0][0], 10),
+        parseInt(sizes[0][1], 10)
+      ]),
+      format: sizes
+        .filter(size => size.length > 1)
+        .map(sizeTupleToRtbSize),
+      topframe: inIframe() ? 0 : 1,
+      pos: params.pos || 0
+    };
   }
 }
 
@@ -391,16 +419,13 @@ function createNativeImp(bid) {
 function createVideoImp(bid) {
   const videoAdUnitParams = deepAccess(bid, 'mediaTypes.video', {});
   const videoBidderParams = deepAccess(bid, 'params.video', {});
-  const computedParams = {};
+  const playerSize = videoAdUnitParams.playerSize;
+  const computedParams = Array.isArray(playerSize)
+    ? parseGPTSingleSizeArrayToRtbSize(Array.isArray(playerSize[0]) ? playerSize[0] : playerSize) || {}
+    : {};
 
   // Special case for playerSize.
   // Eeach props will be overrided if they are defined in config.
-  if (Array.isArray(videoAdUnitParams.playerSize)) {
-    const tempSize = (Array.isArray(videoAdUnitParams.playerSize[0])) ? videoAdUnitParams.playerSize[0] : videoAdUnitParams.playerSize;
-    computedParams.w = tempSize[0];
-    computedParams.h = tempSize[1];
-  }
-
   const videoParams = {
     ...computedParams,
     ...videoAdUnitParams,
@@ -619,27 +644,7 @@ export const spec = {
       payload.imp.push(imp);
     });
 
-    const schain = validBidRequests[0]?.ortb2?.source?.ext?.schain;
-    if (schain) {
-      deepSetValue(payload, 'source.ext.schain', schain);
-    }
-
-    if (bidderRequest && bidderRequest.gdprConsent) {
-      deepSetValue(payload, 'user.ext.consent', bidderRequest.gdprConsent.consentString);
-      deepSetValue(payload, 'regs.ext.gdpr', (bidderRequest.gdprConsent.gdprApplies ? 1 : 0));
-    }
-
-    if (bidderRequest && bidderRequest.uspConsent) {
-      deepSetValue(payload, 'regs.ext.us_privacy', bidderRequest.uspConsent);
-    }
-
-    if (config.getConfig('coppa') === true) {
-      deepSetValue(payload, 'regs.coppa', 1);
-    }
-
-    if (deepAccess(validBidRequests[0], 'userIdAsEids')) {
-      deepSetValue(payload, 'user.ext.eids', validBidRequests[0].userIdAsEids);
-    }
+    addRequestSignals(payload, validBidRequests, bidderRequest);
 
     // Assign payload.site from refererinfo
     if (bidderRequest.refererInfo) {
