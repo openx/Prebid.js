@@ -16,7 +16,6 @@ import {
   logWarn,
   mergeDeep,
   parseGPTSingleSizeArrayToRtbSize,
-  setOnAny,
   sizeTupleToRtbSize,
   triggerPixel
 } from '../src/utils.js';
@@ -219,7 +218,7 @@ function addRequestSignals(payload, validBidRequests, bidderRequest) {
     gdpr: gdprConsent ? Number(Boolean(gdprConsent.gdprApplies)) : undefined,
     us_privacy: uspConsent
   });
-  const schain = setOnAny(validBidRequests, 'ortb2.source.ext.schain');
+  const schain = deepAccess(validBidRequests[0], 'ortb2.source.ext.schain');
 
   if (schain) {
     deepSetValue(payload, 'source.ext.schain', schain);
