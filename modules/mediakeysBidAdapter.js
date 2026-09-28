@@ -66,7 +66,7 @@ const ORTB_VIDEO_PARAMS = {
   h: value => isInteger(value),
   startdelay: value => isInteger(value),
   placement: value => [1, 2, 3, 4, 5].indexOf(value) !== -1,
-  plcmt: value => [1, 2, 3, 4].indexOf(value) !== -1,
+  plcmt: value => [1, 2, 3, 4, 5, 6].indexOf(value) !== -1,
   linearity: value => [1, 2].indexOf(value) !== -1,
   skip: value => [0, 1].indexOf(value) !== -1,
   skipmin: value => isInteger(value),
@@ -77,10 +77,10 @@ const ORTB_VIDEO_PARAMS = {
   minbitrate: value => isInteger(value),
   maxbitrate: value => isInteger(value),
   boxingallowed: value => [0, 1].indexOf(value) !== -1,
-  playbackmethod: value => Array.isArray(value) && value.every(v => [1, 2, 3, 4, 5, 6].indexOf(v) !== -1),
+  playbackmethod: value => Array.isArray(value) && value.every(v => [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].indexOf(v) !== -1),
   playbackend: value => [1, 2, 3].indexOf(value) !== -1,
   delivery: value => [1, 2, 3].indexOf(value) !== -1,
-  pos: value => [0, 1, 2, 3, 4, 5, 6, 7].indexOf(value) !== -1,
+  pos: value => [0, 1, 2, 3, 4, 5, 6, 7, 8].indexOf(value) !== -1,
   api: value => Array.isArray(value) && value.every(v => [1, 2, 3, 4, 5, 6].indexOf(v) !== -1)
 };
 
