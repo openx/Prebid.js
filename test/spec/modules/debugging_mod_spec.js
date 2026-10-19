@@ -8,6 +8,11 @@ import {
 } from '../../../modules/debugging/debugging.js';
 import '../../../modules/debugging/index.js';
 import { makePbsInterceptor } from '../../../modules/debugging/pbsInterceptor.js';
+import {
+  configureFpdValidation,
+  startAuctionFpdValidationHook,
+  validateOrtb2ForDebug,
+} from '../../../modules/debugging/fpdValidation.js';
 import { config } from '../../../src/config.js';
 import { hook } from '../../../src/hook.js';
 import {
@@ -27,7 +32,7 @@ describe('bid interceptor', () => {
   let interceptor, mockSetTimeout;
   beforeEach(() => {
     mockSetTimeout = sinon.stub().callsFake((fn) => fn());
-    const BidInterceptor = makebidInterceptor({ utils, VIDEO, BANNER, NATIVE, Renderer })
+    const BidInterceptor = makebidInterceptor({ utils, VIDEO, BANNER, NATIVE, Renderer });
     interceptor = new BidInterceptor({ setTimeout: mockSetTimeout, logger: prefixLog('TEST') });
   });
 
@@ -111,8 +116,8 @@ describe('bid interceptor', () => {
   });
 
   describe('rule', () => {
-    function matchingRule({ replace, options, paapi }) {
-      setRules({ when: {}, then: replace, options: options, paapi });
+    function matchingRule({ replace, options }) {
+      setRules({ when: {}, then: replace, options: options });
       return interceptor.match({});
     }
 
@@ -172,48 +177,6 @@ describe('bid interceptor', () => {
       });
     });
 
-    describe('paapi', () => {
-      it('should accept literals', () => {
-        const mockConfig = [
-          { config: { paapi: 1 } },
-          { config: { paapi: 2 } }
-        ]
-        const paapi = matchingRule({ paapi: mockConfig }).paapi({});
-        expect(paapi).to.eql(mockConfig);
-      });
-
-      it('should accept a function and pass extra args to it', () => {
-        const paapiDef = sinon.stub();
-        const args = [{}, {}, {}];
-        matchingRule({ paapi: paapiDef }).paapi(...args);
-        expect(paapiDef.calledOnceWith(...args.map(sinon.match.same))).to.be.true;
-      });
-
-      Object.entries({
-        'literal': (cfg) => [cfg],
-        'function': (cfg) => () => [cfg]
-      }).forEach(([t, makeConfigs]) => {
-        describe(`when paapi is defined as a ${t}`, () => {
-          it('should wrap top-level configs in "config"', () => {
-            const cfg = { decisionLogicURL: 'example' };
-            expect(matchingRule({ paapi: makeConfigs(cfg) }).paapi({})).to.eql([{
-              config: cfg
-            }])
-          });
-
-          Object.entries({
-            'config': { config: 1 },
-            'igb': { igb: 1 },
-            'config and igb': { config: 1, igb: 2 }
-          }).forEach(([t, cfg]) => {
-            it(`should not wrap configs that define top-level ${t}`, () => {
-              expect(matchingRule({ paapi: makeConfigs(cfg) }).paapi({})).to.eql([cfg]);
-            })
-          })
-        })
-      })
-    })
-
     describe('.options', () => {
       it('should include default rule options', () => {
         const optDef = { someOption: 'value' };
@@ -231,17 +194,16 @@ describe('bid interceptor', () => {
   });
 
   describe('intercept()', () => {
-    let done, addBid, addPaapiConfig;
+    let done, addBid;
 
     function intercept(args = {}) {
       const bidRequest = { bids: args.bids || [] };
-      return interceptor.intercept(Object.assign({ bidRequest, done, addBid, addPaapiConfig }, args));
+      return interceptor.intercept(Object.assign({ bidRequest, done, addBid }, args));
     }
 
     beforeEach(() => {
       done = sinon.spy();
       addBid = sinon.spy();
-      addPaapiConfig = sinon.spy();
     });
 
     describe('on no match', () => {
@@ -304,20 +266,6 @@ describe('bid interceptor', () => {
         });
       });
 
-      it('should call addPaapiConfigs when provided', () => {
-        const mockPaapiConfigs = [
-          { config: { paapi: 1 } },
-          { config: { paapi: 2 } }
-        ]
-        setRules({
-          when: { id: 2 },
-          paapi: mockPaapiConfigs,
-        });
-        intercept({ bidRequest: REQUEST });
-        expect(addPaapiConfig.callCount).to.eql(2);
-        mockPaapiConfigs.forEach(cfg => sinon.assert.calledWith(addPaapiConfig, cfg))
-      })
-
       it('should not call onBid when then is null', () => {
         setRules({
           when: { id: 2 },
@@ -325,7 +273,7 @@ describe('bid interceptor', () => {
         });
         intercept({ bidRequest: REQUEST });
         sinon.assert.notCalled(addBid);
-      })
+      });
 
       it('should call done()', () => {
         intercept({ bidRequest: REQUEST });
@@ -350,14 +298,120 @@ describe('bid interceptor', () => {
 describe('Debugging config', () => {
   it('should behave gracefully when sessionStorage throws', () => {
     const logError = sinon.stub();
-    const getStorage = () => { throw new Error() };
+    const getStorage = () => { throw new Error(); };
     getConfig({ enabled: false }, { getStorage, logger: { logError }, hook, utils });
     expect(logError.called).to.be.true;
   });
 });
 
+describe('fpdValidation', () => {
+  const invalidOrtb2 = {
+    imp: { id: 'invalid-top-level-property' },
+    user: { yob: 'not-a-number' },
+  };
+
+  it('should validate against a clone and keep original ortb2 untouched', () => {
+    const logWarn = sinon.spy();
+    configureFpdValidation({ utils, logger: { logWarn } });
+    const result = validateOrtb2ForDebug(invalidOrtb2);
+    expect(result).to.equal(invalidOrtb2);
+    expect(result.imp).to.deep.equal({ id: 'invalid-top-level-property' });
+    expect(result.user).to.deep.equal({ yob: 'not-a-number' });
+    // debugging does not alter data, so warnings read "Invalid" rather than "Filtered"
+    expect(logWarn.firstCall.args[0]).to.match(/^Invalid /);
+  });
+
+  it('should throw when deepClone is not available', () => {
+    const logWarn = sinon.spy();
+    configureFpdValidation({ utils: { ...utils, deepClone: undefined }, logger: { logWarn } });
+    expect(() => validateOrtb2ForDebug(invalidOrtb2)).to.throw();
+    expect(logWarn.called).to.be.false;
+  });
+
+  it('should validate global and bidder ortb2 on startAuction', () => {
+    const bidderOrtb2 = { user: { yob: 'bidder-not-a-number' } };
+    const globalOrtb2 = { ...invalidOrtb2 };
+    const logWarn = sinon.spy();
+    configureFpdValidation({ utils, logger: { logWarn } });
+    const next = sinon.stub();
+
+    startAuctionFpdValidationHook(next, {
+      ortb2Fragments: {
+        global: globalOrtb2,
+        bidder: { testBidder: bidderOrtb2 }
+      }
+    });
+
+    expect(next.calledOnce).to.be.true;
+    expect(logWarn.callCount).to.be.at.least(2);
+    expect(globalOrtb2.imp).to.deep.equal({ id: 'invalid-top-level-property' });
+    expect(bidderOrtb2.user.yob).to.equal('bidder-not-a-number');
+  });
+
+  it('should never mutate req.ortb2Fragments, even when validation filters data', () => {
+    const logWarn = sinon.spy();
+    configureFpdValidation({ utils, logger: { logWarn } });
+    const req = {
+      ortb2Fragments: {
+        global: {
+          imp: { id: 'invalid-top-level-property' },
+          user: { yob: 'not-a-number' },
+          device: { w: 1920, h: 1080 },
+        },
+        bidder: {
+          bidderA: { user: { yob: 'bidder-not-a-number' }, site: { domain: 'example.com' } },
+        },
+      },
+    };
+    const snapshot = utils.deepClone(req.ortb2Fragments);
+
+    startAuctionFpdValidationHook(sinon.stub(), req);
+
+    // validation actually ran against the invalid data...
+    expect(logWarn.called).to.be.true;
+    // ...but the request fragments are left untouched
+    expect(req.ortb2Fragments).to.deep.equal(snapshot);
+  });
+
+  it('should always call next passing it the original request', () => {
+    configureFpdValidation({ utils, logger: { logWarn: sinon.spy() } });
+    const next = sinon.stub();
+    const req = { ortb2Fragments: { global: { user: { yob: 'not-a-number' } }, bidder: {} } };
+
+    startAuctionFpdValidationHook(next, req);
+
+    expect(next.calledOnce).to.be.true;
+    expect(next.firstCall.args[0]).to.equal(req);
+  });
+
+  it('should call next passing it the original request when there is nothing to validate', () => {
+    configureFpdValidation({ utils, logger: { logWarn: sinon.spy() } });
+    const next = sinon.stub();
+    const req = {};
+
+    startAuctionFpdValidationHook(next, req);
+
+    expect(next.calledOnce).to.be.true;
+    expect(next.firstCall.args[0]).to.equal(req);
+  });
+
+  it('should call next passing it the original request even if validation throws', () => {
+    const logWarn = sinon.spy();
+    configureFpdValidation({ utils, logger: { logWarn } });
+    const next = sinon.stub();
+    const req = {};
+    Object.defineProperty(req, 'ortb2Fragments', {
+      get() { throw new Error('boom'); }
+    });
+
+    expect(() => startAuctionFpdValidationHook(next, req)).to.not.throw();
+    expect(next.calledOnce).to.be.true;
+    expect(next.firstCall.args[0]).to.equal(req);
+  });
+});
+
 describe('bidderBidInterceptor', () => {
-  let next, interceptBids, onCompletion, interceptResult, done, addBid, wrapCallback, addPaapiConfig, wrapped, bidderBidInterceptor;
+  let next, interceptBids, onCompletion, interceptResult, done, addBid, wrapCallback, wrapped, bidderBidInterceptor;
 
   function interceptorArgs({ spec = {}, bids = [], bidRequest = {}, ajax = {}, cbs = {} } = {}) {
     return [next, interceptBids, spec, bids, bidRequest, ajax, wrapCallback, Object.assign({ onCompletion }, cbs)];
@@ -372,16 +426,15 @@ describe('bidderBidInterceptor', () => {
       return function () {
         wrapped = true;
         try {
-          return cb.apply(this, arguments)
+          return cb.apply(this, arguments);
         } finally {
           wrapped = false;
         }
-      }
+      };
     });
     interceptBids = sinon.stub().callsFake((opts) => {
       done = opts.done;
       addBid = opts.addBid;
-      addPaapiConfig = opts.addPaapiConfig;
       return interceptResult;
     });
     onCompletion = sinon.spy();
@@ -400,15 +453,6 @@ describe('bidderBidInterceptor', () => {
     expect(onBid.calledWith(sinon.match.same(bid))).to.be.true;
   });
 
-  it('should pass addPaapiConfig that triggers onPaapi', () => {
-    const onPaapi = sinon.stub().callsFake(() => {
-      expect(wrapped).to.be.true;
-    });
-    bidderBidInterceptor(...interceptorArgs({ cbs: { onPaapi } }));
-    addPaapiConfig({ paapi: 'config' }, { bidId: 'bidId' });
-    sinon.assert.calledWith(onPaapi, { paapi: 'config', bidId: 'bidId' })
-  })
-
   describe('with no remaining bids', () => {
     it('should pass a done callback that triggers onCompletion', () => {
       bidderBidInterceptor(...interceptorArgs());
@@ -421,7 +465,7 @@ describe('bidderBidInterceptor', () => {
       const onResponse = sinon.stub();
       bidderBidInterceptor(...interceptorArgs({ cbs: { onResponse } }));
       sinon.assert.called(onResponse);
-    })
+    });
 
     it('should not call next()', () => {
       bidderBidInterceptor(...interceptorArgs());
@@ -654,7 +698,6 @@ describe('bid overrides', function () {
         'bidderCode': 'rubicon',
         'width': 970,
         'height': 250,
-        'statusMessage': 'Bid available',
         'mediaType': 'banner',
         'source': 'client',
         'currency': 'USD',
@@ -763,7 +806,6 @@ describe('bid overrides', function () {
         'bids': [{
           'width': 970,
           'height': 250,
-          'statusMessage': 'Bid available',
           'mediaType': 'banner',
           'source': 'client',
           'currency': 'USD',

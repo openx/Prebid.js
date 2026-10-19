@@ -3,6 +3,7 @@ import { config } from '../src/config.js';
 import { BANNER, VIDEO } from '../src/mediaTypes.js';
 import { getStorageManager } from '../src/storageManager.js';
 import { sizesToSizeTuples } from "../src/utils.js";
+import { getDNT } from '../libraries/dnt/index.js';
 
 const BIDDER_CODE = 'scalibur';
 const ENDPOINT_SERVER = new URLSearchParams(window.location.search).get('sclServer') || 'srv';
@@ -115,7 +116,7 @@ export const spec = {
         ua: ortb2Device.ua,
         language: ortb2Device.language,
         sua: ortb2Device.sua || {},
-        dnt: ortb2Device.dnt ?? 0,
+        dnt: getDNT() ? 1 : 0,
       },
       user: {
         eids,
@@ -149,6 +150,17 @@ export const spec = {
       payload.source.schain = validBidRequests[0]?.ortb2?.source?.ext?.schain;
     }
 
+    // Publisher block lists
+    if (ortb2.bcat?.length) {
+      payload.bcat = ortb2.bcat;
+    }
+    if (ortb2.badv?.length) {
+      payload.badv = ortb2.badv;
+    }
+    if (ortb2.cattax) {
+      payload.cattax = ortb2.cattax;
+    }
+
     return {
       method: 'POST',
       url: ENDPOINT_URL,
@@ -173,11 +185,15 @@ export const spec = {
             cpm: bid.cpm,
             width: bid.width,
             height: bid.height,
-            creativeId: bid.crid || '',
+            creativeId: bid.crid || bid.creativeId || '',
             currency: response.cur || DEFAULT_CURRENCY,
             netRevenue: true,
             ttl: bid.exp || 300,
           };
+          const advertiserDomains = getAdvertiserDomains(bid);
+          if (advertiserDomains.length) {
+            bidRes.meta = { advertiserDomains };
+          }
           if (imp && imp.banner) {
             bidRes.ad = bid.adm;
             bidRes.mediaType = BANNER;
@@ -223,6 +239,11 @@ export const spec = {
 
 // Also, export storage for easier testing.
 export { storage };
+
+function getAdvertiserDomains(bid) {
+  const domains = bid.meta?.advertiserDomains || bid.adomain || [];
+  return (Array.isArray(domains) ? domains : [domains]).filter(Boolean);
+}
 
 export function getFirstPartyData() {
   if (!storage.hasLocalStorage()) return;

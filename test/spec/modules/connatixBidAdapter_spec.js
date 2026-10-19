@@ -10,13 +10,13 @@ import {
   readFromLocalStorage as connatixReadFromLocalStorage,
   saveInLocalStorage as connatixSaveInLocalStorage,
   spec,
-  storage
+  storage, dep
 } from '../../../modules/connatixBidAdapter.js';
 import adapterManager from '../../../src/adapterManager.js';
 import * as utils from '../../../src/utils.js';
-import * as ajax from '../../../src/ajax.js';
-import { ADPOD, BANNER, VIDEO } from '../../../src/mediaTypes.js';
+import { BANNER, VIDEO } from '../../../src/mediaTypes.js';
 import * as winDimensions from '../../../src/utils/winDimensions.js';
+import * as adUnits from 'src/utils/adUnits';
 
 const BIDDER_CODE = 'connatix';
 
@@ -54,7 +54,7 @@ describe('connatixBidAdapter', function () {
         maxduration: 60,
         startdelay: 0,
       }
-    }
+    };
 
     bid.mediaTypes = mediaTypes;
   }
@@ -88,7 +88,7 @@ describe('connatixBidAdapter', function () {
     let getBoundingClientRectStub;
     let topWinMock;
     let querySelectorStub;
-    let getElementByIdStub;
+    let getElementStub;
     let sandbox;
 
     beforeEach(() => {
@@ -105,7 +105,7 @@ describe('connatixBidAdapter', function () {
       };
 
       querySelectorStub = sandbox.stub(window.top.document, 'querySelector');
-      getElementByIdStub = sandbox.stub(document, 'getElementById');
+      getElementStub = sandbox.stub(adUnits, 'getAdUnitElement');
       sandbox.stub(winDimensions, 'getWinDimensions').callsFake(() => (
         {
           document: {
@@ -143,7 +143,7 @@ describe('connatixBidAdapter', function () {
       });
 
       querySelectorStub.withArgs('#validElement').returns(element);
-      getElementByIdStub.returns(null);
+      getElementStub.returns(null);
 
       const result = connatixDetectViewability(bid);
 
@@ -171,6 +171,7 @@ describe('connatixBidAdapter', function () {
         height: 250
       });
 
+      const getElementByIdStub = sandbox.stub(document, 'getElementById');
       getElementByIdStub.withArgs('validElement').returns(element);
 
       const result = connatixDetectViewability(bid);
@@ -201,7 +202,7 @@ describe('connatixBidAdapter', function () {
       });
 
       querySelectorStub.withArgs('#invalidElement').returns(null);
-      getElementByIdStub.withArgs('adUnitCode123').returns(element);
+      getElementStub.returns(element);
 
       const result = connatixDetectViewability(bid);
 
@@ -231,7 +232,7 @@ describe('connatixBidAdapter', function () {
       });
 
       // The fallback should use the adUnitCode to find the element
-      getElementByIdStub.withArgs('adUnitCode123').returns(element);
+      getElementStub.returns(element);
 
       const result = connatixDetectViewability(bid);
 
@@ -339,18 +340,15 @@ describe('connatixBidAdapter', function () {
     let ajaxStub;
 
     beforeEach(() => {
-      ajaxStub = sinon.stub(spec, 'triggerEvent')
-    })
+      ajaxStub = sinon.stub(spec, 'triggerEvent');
+    });
 
     afterEach(() => {
-      ajaxStub.restore()
+      ajaxStub.restore();
     });
 
     it('call event if bidder is connatix', () => {
-      const result = spec.onTimeout([{
-        bidder: 'connatix',
-        timeout: 500,
-      }]);
+      spec.onTimeout([{ bidder: 'connatix', timeout: 500 }]);
       expect(ajaxStub.calledOnce).to.equal(true);
 
       const data = ajaxStub.firstCall.args[0];
@@ -359,10 +357,7 @@ describe('connatixBidAdapter', function () {
     });
 
     it('timeout event is not triggered if bidder is not connatix', () => {
-      const result = spec.onTimeout([{
-        bidder: 'otherBidder',
-        timeout: 500,
-      }]);
+      spec.onTimeout([{ bidder: 'other', timeout: 500 }]);
       expect(ajaxStub.notCalled).to.equal(true);
     });
   });
@@ -418,7 +413,7 @@ describe('connatixBidAdapter', function () {
     let ajaxStub;
 
     beforeEach(() => {
-      ajaxStub = sinon.stub(ajax, 'ajax');
+      ajaxStub = sinon.stub(dep, 'ajax');
     });
 
     afterEach(() => {
@@ -430,7 +425,7 @@ describe('connatixBidAdapter', function () {
       spec.triggerEvent(data);
 
       expect(ajaxStub.calledOnce).to.equal(true);
-      const [url, _, payload, options] = ajaxStub.firstCall.args;
+      const [url, , payload, options] = ajaxStub.firstCall.args;
       expect(url).to.equal('https://capi.connatix.com/tr/am');
       expect(payload).to.equal(JSON.stringify(data));
       expect(options.method).to.equal('POST');
@@ -482,11 +477,6 @@ describe('connatixBidAdapter', function () {
       addVideoToBidMock(bid);
       expect(spec.isBidRequestValid(bid)).to.be.true;
     });
-    it('Should return false if context is set to adpod on video media type', function() {
-      addVideoToBidMock(bid);
-      bid.mediaTypes.video.context = ADPOD;
-      expect(spec.isBidRequestValid(bid)).to.be.false;
-    });
     it('Should return true if add an extra field was added to the bidRequest', function () {
       bid.params.test = 1;
       expect(spec.isBidRequestValid(bid)).to.be.true;
@@ -530,7 +520,7 @@ describe('connatixBidAdapter', function () {
 
       bid = mockBidRequest();
       serverRequest = spec.buildRequests([bid], bidderRequest);
-    })
+    });
 
     this.afterEach(function() {
       setDataInLocalStorageStub.restore();
@@ -629,7 +619,7 @@ describe('connatixBidAdapter', function () {
     });
 
     it('Should contain specific values for banner bids', function () {
-      const adHtml = 'ad html'
+      const adHtml = 'ad html';
       serverResponse.body.Bids = [{ ...Bid, Ad: adHtml }];
 
       const bidResponses = spec.interpretResponse(serverResponse);
@@ -641,7 +631,7 @@ describe('connatixBidAdapter', function () {
     });
 
     it('Should contain specific values for video bids', function () {
-      const adVastXml = 'ad vast xml'
+      const adVastXml = 'ad vast xml';
       serverResponse.body.Bids = [{ ...Bid, VastXml: adVastXml }];
 
       const bidResponses = spec.interpretResponse(serverResponse);
@@ -656,8 +646,8 @@ describe('connatixBidAdapter', function () {
   describe('getUserSyncs', function() {
     const CustomerId = '99f20d18-c4b4-4a28-3d8e-d43e2c8cb4ac';
     const PlayerId = 'e4984e88-9ff4-45a3-8b9d-33aabcad634f';
-    const UserSyncEndpoint = 'https://connatix.com/sync'
-    const UserSyncEndpointWithParams = 'https://connatix.com/sync?param1=value1'
+    const UserSyncEndpoint = 'https://connatix.com/sync';
+    const UserSyncEndpointWithParams = 'https://connatix.com/sync?param1=value1';
     const Bid = { Cpm: 0.1, RequestId: '2f897340c4eaa3', Ttl: 86400, CustomerId, PlayerId };
 
     const serverResponse = {
@@ -779,15 +769,13 @@ describe('connatixBidAdapter', function () {
       expect(url).to.equal(`${UserSyncEndpointWithParams}&gdpr=1&gdpr_consent=test%262&us_privacy=1YYYN&gpp=GPP&gpp_sid=2,4`);
     });
     it('Should append coppa to the url if coppa is true', function () {
-      config.setConfig({
-        coppa: true
-      });
       const userSyncList = spec.getUserSyncs(
         { iframeEnabled: true, pixelEnabled: true },
         [serverResponse],
         { gdprApplies: true, consentString: 'test&2' },
         '1YYYN',
-        { gppString: 'GPP', applicableSections: [2, 4] }
+        { gppString: 'GPP', applicableSections: [2, 4] },
+        true
       );
       const { url } = userSyncList[0];
       expect(url).to.equal(`${UserSyncEndpoint}?gdpr=1&gdpr_consent=test%262&us_privacy=1YYYN&gpp=GPP&gpp_sid=2,4&coppa=1`);
@@ -800,7 +788,7 @@ describe('connatixBidAdapter', function () {
     this.beforeEach(function () {
       bid = mockBidRequest();
       validBidRequests = [bid];
-    })
+    });
 
     it('Connatix adapter reads EIDs from Prebid user models and adds it to Request', function() {
       validBidRequests[0].userIdAsEids = [{
@@ -1007,25 +995,25 @@ describe('connatixBidAdapter', function () {
   });
   describe('connatixHasQueryParams', () => {
     it('Should return false if there is no query param in the url', () => {
-      const url = 'http://example.com'
+      const url = 'http://example.com';
       const result = connatixHasQueryParams(url);
       expect(result).to.equal(false);
     });
 
     it('Should return true if there is one query param in the url', () => {
-      const url = 'http://example.com?query1=value1'
+      const url = 'http://example.com?query1=value1';
       const result = connatixHasQueryParams(url);
       expect(result).to.equal(true);
     });
 
     it('Should return true if there is multiple query params in the url', () => {
-      const url = 'http://example.com?query1=value1&query2=value2'
+      const url = 'http://example.com?query1=value1&query2=value2';
       const result = connatixHasQueryParams(url);
       expect(result).to.equal(true);
     });
 
     it('Should return false if the url is invalid', () => {
-      const url = 'example'
+      const url = 'example';
       const result = connatixHasQueryParams(url);
       expect(result).to.equal(false);
     });

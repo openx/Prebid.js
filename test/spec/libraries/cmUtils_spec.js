@@ -45,13 +45,13 @@ describe('consent management utils', () => {
         afterEach(() => {
           checkLogs(utils.logError);
         });
-        it('should log an error and run bidsBackHandler', async () => {
-          const bidsBackHandler = sinon.stub();
-          cmHook(next, { bidsBackHandler });
+        it('should log an error and reject the auction promise', async () => {
+          const reject = sinon.stub();
+          cmHook(next, { defer: { reject } });
           await loadResult.catch(() => null);
           sinon.assert.calledWith(utils.logError, sinon.match('Canceling auction'));
           sinon.assert.notCalled(next);
-          sinon.assert.called(bidsBackHandler);
+          sinon.assert.called(reject);
         });
         it('should not choke when bidsBackHandler is not present', async () => {
           cmHook(next, {});
@@ -89,8 +89,8 @@ describe('consent management utils', () => {
             sandbox.resetHistory();
             cmHook(next, {});
             await loadResult;
-            sinon.assert.notCalled(utils.logWarn)
-          })
+            sinon.assert.notCalled(utils.logWarn);
+          });
         });
 
         describe('when consent data is not available', () => {
@@ -102,8 +102,8 @@ describe('consent management utils', () => {
             cmHook(next, {});
             await loadResult;
             checkLogs(utils.logWarn);
-          })
-        })
+          });
+        });
       });
     });
   });
@@ -114,15 +114,16 @@ describe('consent management utils', () => {
       consentDataHandler = {
         enable: sinon.stub(),
         setConsentData: sinon.stub(),
-        getConsentData: sinon.stub()
+        getConsentData: sinon.stub(),
+        error: sinon.stub(),
       };
       setupCmp = sinon.stub();
       cmpTimeout = 0;
       actionTimeout = null;
       getNullConsent = sinon.stub().returns({
         consent: null
-      })
-    })
+      });
+    });
 
     function runLookup() {
       return lookupConsentData({
@@ -148,7 +149,7 @@ describe('consent management utils', () => {
         sinon.assert.fail('should throw');
       } catch (e) {
         expect(e).to.equal(err);
-        sinon.assert.calledWith(consentDataHandler.setConsentData, null);
+        sinon.assert.calledWith(consentDataHandler.error, err);
       }
     });
 
@@ -182,7 +183,7 @@ describe('consent management utils', () => {
         setupCmp.callsFake((setPC) => {
           setProvisionalConsent = setPC;
           return new Promise((resolve) => {
-            setTimeout(resolve, 300)
+            setTimeout(resolve, 300);
           });
         });
       });
@@ -193,8 +194,8 @@ describe('consent management utils', () => {
           clock.tick(timeout + 1);
           const { consentData, error } = await lookup;
           sinon.assert.calledWith(consentDataHandler.setConsentData, { consent: null });
-          expect(consentData).to.eql({ consent: null })
-          expect(error.message).to.match(/.*CMP to load.*/)
+          expect(consentData).to.eql({ consent: null });
+          expect(error.message).to.match(/.*CMP to load.*/);
         });
       });
       [0, 100].forEach(timeout => {
@@ -207,7 +208,7 @@ describe('consent management utils', () => {
           clock.tick(timeout + 1);
           const { consentData, error } = await lookup;
           expect(consentData).to.eql({ consent: 'provisional' });
-          expect(error.message).to.match(/.*action.*/)
+          expect(error.message).to.match(/.*action.*/);
         });
       });
 
@@ -223,18 +224,18 @@ describe('consent management utils', () => {
         clock.tick(80);
         await lookup;
         expect(consentData).to.eql({ consent: 2 });
-      })
+      });
     });
   });
 
   describe('configParser', () => {
     let namespace, displayName, consentDataHandler, parseConsentData, getNullConsent, cmpHandlers, cmpEventCleanup;
-    let getConsentConfig, resetConsentDataHandler;
+    let getConsentConfig;
 
     beforeEach(() => {
       namespace = 'test';
       displayName = 'TEST';
-      resetConsentDataHandler = sinon.stub();
+      sinon.stub();
       consentDataHandler = {
         reset: sinon.stub(),
         removeCmpEventListener: sinon.stub(),

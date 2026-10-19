@@ -1,4 +1,3 @@
-import { getDNT } from '../libraries/dnt/index.js';
 import {
   cleanObj,
   deepAccess,
@@ -20,9 +19,10 @@ import {
   triggerPixel
 } from '../src/utils.js';
 import { registerBidder } from '../src/adapters/bidderFactory.js';
-import { config } from '../src/config.js';
 import { BANNER, NATIVE, VIDEO } from '../src/mediaTypes.js';
 import { convertOrtbRequestToProprietaryNative } from '../src/native.js';
+import { getDNT } from '../libraries/dnt/index.js';
+import { coppaDataHandler } from '../src/consentHandler.js';
 
 const AUCTION_TYPE = 1;
 const BIDDER_CODE = 'mediakeys';
@@ -141,9 +141,9 @@ function getFloor(bid, mediaType, size = '*') {
     currency: DEFAULT_CURRENCY,
     mediaType,
     size
-  })
+  });
 
-  return (isPlainObject(floor) && !isNaN(floor.floor) && floor.currency === DEFAULT_CURRENCY) ? floor.floor : false
+  return (isPlainObject(floor) && !isNaN(floor.floor) && floor.currency === DEFAULT_CURRENCY) ? floor.floor : false;
 }
 
 /**
@@ -237,7 +237,7 @@ function addRequestSignals(payload, validBidRequests, bidderRequest) {
       ...regsExt
     });
   }
-  if (config.getConfig('coppa') === true) {
+  if (bidderRequest?.ortb2?.regs?.coppa === 1 || coppaDataHandler.getCoppa()) {
     deepSetValue(payload, 'regs.coppa', 1);
   }
 }
@@ -278,7 +278,7 @@ function createBannerImp(bid) {
 function createNativeImp(bid) {
   if (!bid.nativeParams) {
     logWarn(`${BIDDER_CODE}: bid.nativeParams object has not been found.`);
-    return
+    return;
   }
 
   const nativeParams = deepClone(bid.nativeParams);
@@ -296,7 +296,7 @@ function createNativeImp(bid) {
     context: 1, // overwrited later if needed
     plcmttype: 1, // overwrited later if needed
     assets: []
-  }
+  };
 
   Object.keys(ORTB_NATIVE_PARAMS).forEach(name => {
     if (extraParams.hasOwnProperty(name)) {
@@ -322,7 +322,7 @@ function createNativeImp(bid) {
     if (!asset.img.h) {
       asset.img.hmin = 0;
     }
-  }
+  };
 
   // Prebid.js "image" type support.
   // Add some defaults to support special type provided by Prebid.js `mediaTypes.native.type: "image"`
@@ -345,7 +345,7 @@ function createNativeImp(bid) {
       const asset = {
         id: internalNativeAsset.id,
         required: param.required ? 1 : 0
-      }
+      };
 
       switch (key) {
         case 'title':
@@ -353,9 +353,9 @@ function createNativeImp(bid) {
             asset.title = {
               len: param.len || param.length,
               ext: param.ext
-            }
+            };
           } else {
-            logWarn(`${BIDDER_CODE}: "title.length" property for native asset is required. Skipped for request.`)
+            logWarn(`${BIDDER_CODE}: "title.length" property for native asset is required. Skipped for request.`);
             continue;
           }
           break;
@@ -365,7 +365,7 @@ function createNativeImp(bid) {
             type: internalNativeAsset.type,
             mimes: param.mimes,
             ext: param.ext,
-          }
+          };
 
           setImageAssetSizes(asset, param);
 
@@ -375,7 +375,7 @@ function createNativeImp(bid) {
             type: internalNativeAsset.type,
             mimes: param.mimes,
             ext: param.ext,
-          }
+          };
 
           setImageAssetSizes(asset, param);
           break;
@@ -397,7 +397,7 @@ function createNativeImp(bid) {
             type: internalNativeAsset.type,
             len: param.len,
             ext: param.ext
-          }
+          };
           break;
       }
 
@@ -408,7 +408,7 @@ function createNativeImp(bid) {
   if (nativeObject.assets.length) {
     return {
       request: nativeObject
-    }
+    };
   }
 }
 
@@ -537,7 +537,7 @@ function nativeBidResponseHandler(bid) {
     return;
   }
 
-  const native = {}
+  const native = {};
 
   nativeAdm.assets.forEach(asset => {
     if (asset.title) {
@@ -578,7 +578,7 @@ function nativeBidResponseHandler(bid) {
       native.clickUrl = nativeAdm.link.url;
     }
     if (Array.isArray(nativeAdm.link.clicktrackers)) {
-      native.clickTrackers = nativeAdm.link.clicktrackers
+      native.clickTrackers = nativeAdm.link.clicktrackers;
     }
   }
 
@@ -653,7 +653,7 @@ export const spec = {
       // TODO: reachedTop is probably not the right check here - it may be false when page is available or vice-versa
       if (bidderRequest.refererInfo.reachedTop) {
         deepSetValue(payload, 'site.page', bidderRequest.refererInfo.page);
-        deepSetValue(payload, 'site.domain', bidderRequest.refererInfo.domain)
+        deepSetValue(payload, 'site.domain', bidderRequest.refererInfo.domain);
         if (bidderRequest.refererInfo.ref) {
           deepSetValue(payload, 'site.ref', bidderRequest.refererInfo.ref);
         }
@@ -676,7 +676,7 @@ export const spec = {
       options: {
         withCredentials: false
       }
-    }
+    };
 
     return request;
   },
@@ -778,6 +778,6 @@ export const spec = {
 
     triggerPixel(url);
   }
-}
+};
 
-registerBidder(spec)
+registerBidder(spec);

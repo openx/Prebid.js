@@ -7,8 +7,9 @@ import {
 } from '../src/utils.js';
 import { registerBidder } from '../src/adapters/bidderFactory.js';
 import { BANNER } from '../src/mediaTypes.js';
-import { getAdMarkup, getBidFloor, getDeviceType, getProcessedSizes } from '../libraries/omsUtils/index.js';
-import { getRoundedViewability } from '../libraries/omsUtils/viewability.js';
+import { getAdMarkup, getBidFloor, getProcessedSizes } from '../libraries/omsUtils/index.js';
+import { getRoundedViewability } from "../libraries/omsUtils/viewability.js";
+import { getAdUnitElement } from '../src/utils/adUnits.js';
 
 const BIDDER_CODE = 'onomagic';
 const URL = 'https://bidder.onomagic.com/hb';
@@ -33,8 +34,8 @@ function buildRequests(bidReqs, bidderRequest) {
     _each(bidReqs, function (bid) {
       const bidSizes = (bid.mediaTypes && bid.mediaTypes.banner && bid.mediaTypes.banner.sizes) || bid.sizes;
       const processedSizes = getProcessedSizes(bidSizes);
-      const viewabilityAmountRounded = getRoundedViewability(bid.adUnitCode, processedSizes);
-
+      const element = getAdUnitElement(bid);
+      const viewabilityAmountRounded = getRoundedViewability(element, processedSizes);
       const imp = {
         id: bid.bidId,
         banner: {
@@ -63,7 +64,7 @@ function buildRequests(bidReqs, bidderRequest) {
         }
       },
       device: {
-        devicetype: getDeviceType(),
+        devicetype: _getDeviceType(),
         w: screen.width,
         h: screen.height
       },
@@ -133,6 +134,18 @@ function interpretResponse(serverResponse) {
 // Don't do user sync for now
 function getUserSyncs(syncOptions, responses, gdprConsent) {
   return [];
+}
+
+function _isMobile() {
+  return (/(ios|ipod|ipad|iphone|android)/i).test(navigator.userAgent);
+}
+
+function _isConnectedTV() {
+  return (/(smart[-]?tv|hbbtv|appletv|googletv|hdmi|netcast\.tv|viera|nettv|roku|\bdtv\b|sonydtv|inettvbrowser|\btv\b)/i).test(navigator.userAgent);
+}
+
+function _getDeviceType() {
+  return _isMobile() ? 1 : _isConnectedTV() ? 3 : 2;
 }
 
 registerBidder(spec);

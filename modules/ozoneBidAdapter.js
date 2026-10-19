@@ -1,13 +1,15 @@
 import {
-  logInfo,
-  logError,
   deepAccess,
-  logWarn,
+  deepClone,
   deepSetValue,
+  generateUUID,
+  getBidIdParameter,
   isArray,
+  logError,
+  logInfo,
+  logWarn,
   mergeDeep,
-  parseUrl,
-  generateUUID, isInteger, deepClone, getBidIdParameter
+  parseUrl
 } from '../src/utils.js';
 import { registerBidder } from '../src/adapters/bidderFactory.js';
 import { BANNER, NATIVE, VIDEO } from '../src/mediaTypes.js';
@@ -16,6 +18,14 @@ import { getPriceBucketString } from '../src/cpmBucketManager.js';
 import { Renderer } from '../src/Renderer.js';
 import { getRefererInfo } from '../src/refererDetection.js';
 import { toOrtb25 } from '../libraries/ortb2.5Translator/translator.js';
+import { coppaDataHandler } from '../src/consentHandler.js';
+
+/**
+ * @typedef {import('../src/adapters/bidderFactory.js').BidRequest} BidRequest
+ * @typedef {import('./ozoneBidAdapter.d.ts').OzoneBidderParams} OzoneBidderParams
+ * @typedef {BidRequest & {params: OzoneBidderParams}} OzoneBidRequest
+ */
+
 const BIDDER_CODE = 'ozone';
 const ORIGIN = 'https://elb.the-ozone-project.com';
 const AUCTIONURI = '/openrtb2/auction';
@@ -62,6 +72,10 @@ export const spec = {
     }
     return false;
   },
+  /**
+   * @param {OzoneBidRequest} bid
+   * @returns {boolean}
+   */
   isBidRequestValid(bid) {
     const vf = 'VALIDATION FAILED';
     logInfo('isBidRequestValid : ', config.getConfig(), bid);
@@ -137,7 +151,6 @@ export const spec = {
     if (this.blockTheRequest()) {
       return [];
     }
-    const fledgeEnabled = !!bidderRequest.fledgeEnabled;
     let htmlParams = { 'publisherId': '', 'siteId': '' };
     if (validBidRequests.length > 0) {
       Object.assign(this.cookieSyncBag.userIdObject, this.findAllUserIdsFromEids(validBidRequests[0]));
@@ -274,14 +287,6 @@ export const spec = {
       if (auctionId) {
         obj.ext.auctionId = auctionId;
       }
-      if (fledgeEnabled) {
-        const auctionEnvironment = deepAccess(ozoneBidRequest, 'ortb2Imp.ext.ae');
-        if (isInteger(auctionEnvironment)) {
-          deepSetValue(obj, 'ext.ae', auctionEnvironment);
-        } else {
-          logError(`ignoring ortb2Imp.ext.ae - not an integer for obj.id=${obj.id}`);
-        }
-      }
       return obj;
     });
     const extObj = {};
@@ -342,11 +347,9 @@ export const spec = {
       logInfo('schain found');
       deepSetValue(ozoneRequest, 'source.ext.schain', schain);
     }
-    if (config.getConfig('coppa') === true) {
+    if ((bidderRequest?.ortb2?.regs?.coppa === 1 || coppaDataHandler.getCoppa())) {
       deepSetValue(ozoneRequest, 'regs.coppa', 1);
     }
-    extObj[bidderKey].cookieDeprecationLabel = deepAccess(bidderRequest, 'ortb2.device.ext.cdep', 'none');
-    logInfo(`cookieDeprecationLabel ortb2.device.ext.cdep = ${extObj[bidderKey].cookieDeprecationLabel}`);
     const batchRequestsVal = this.getBatchRequests();
     if (typeof batchRequestsVal === 'number') {
       logInfo(`Batching = ${batchRequestsVal}`);
@@ -420,7 +423,7 @@ export const spec = {
       banner: deepAccess(bidRequestRef, 'mediaTypes.banner.sizes', null),
       video: deepAccess(bidRequestRef, 'mediaTypes.video.playerSize', null),
       native: deepAccess(bidRequestRef, 'mediaTypes.native.image.sizes', null)
-    }
+    };
     logInfo('getFloorObjectForAuction mediaTypesSizes : ', mediaTypesSizes);
     const ret = {};
     if (mediaTypesSizes.banner) {
@@ -572,20 +575,6 @@ export const spec = {
       }
     }
     let ret = arrAllBids;
-    let fledgeAuctionConfigs = deepAccess(serverResponse, 'ext.igi') || [];
-    if (isArray(fledgeAuctionConfigs) && fledgeAuctionConfigs.length > 0) {
-      fledgeAuctionConfigs = fledgeAuctionConfigs.filter(cfg => {
-        if (typeof cfg !== 'object' || cfg === null) {
-          logWarn('Removing malformed fledge auction config:', cfg);
-          return false;
-        }
-        return true;
-      });
-      ret = {
-        bids: arrAllBids,
-        fledgeAuctionConfigs,
-      };
-    }
     const endTime = new Date().getTime();
     logInfo(`interpretResponse going to return at time ${endTime} (took ${endTime - startTime}ms) Time from buildRequests Start -> interpretRequests End = ${endTime - this.propertyBag.buildRequestsStart}ms`);
     logInfo('will return: ', deepClone(ret));
@@ -666,7 +655,7 @@ export const spec = {
   getVideoContextForBidId(bidId, arrBids) {
     const requestBid = this.getBidRequestForBidId(bidId, arrBids);
     if (requestBid != null) {
-      return deepAccess(requestBid, 'mediaTypes.video.context', 'unknown')
+      return deepAccess(requestBid, 'mediaTypes.video.context', 'unknown');
     }
     return null;
   },
