@@ -70,7 +70,7 @@ const ORTB_VIDEO_PARAMS = {
   h: value => isInteger(value),
   startdelay: value => isInteger(value),
   placement: value => [1, 2, 3, 4, 5].indexOf(value) !== -1,
-  plcmt: value => [1, 2, 3, 4, 5, 6].indexOf(value) !== -1,
+  plcmt: value => isInteger(value) && value >= 1 && value <= 6,
   linearity: value => [1, 2].indexOf(value) !== -1,
   skip: value => [0, 1].indexOf(value) !== -1,
   skipmin: value => isInteger(value),
@@ -81,10 +81,10 @@ const ORTB_VIDEO_PARAMS = {
   minbitrate: value => isInteger(value),
   maxbitrate: value => isInteger(value),
   boxingallowed: value => [0, 1].indexOf(value) !== -1,
-  playbackmethod: value => Array.isArray(value) && value.every(v => [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].indexOf(v) !== -1),
+  playbackmethod: value => Array.isArray(value) && value.every(v => isInteger(v) && v >= 1 && v <= 11),
   playbackend: value => [1, 2, 3].indexOf(value) !== -1,
   delivery: value => [1, 2, 3].indexOf(value) !== -1,
-  pos: value => [0, 1, 2, 3, 4, 5, 6, 7, 8].indexOf(value) !== -1,
+  pos: value => isInteger(value) && value >= 0 && value <= 8,
   api: value => Array.isArray(value) && value.every(v => [1, 2, 3, 4, 5, 6].indexOf(v) !== -1)
 };
 
@@ -210,17 +210,50 @@ function createOrtbTemplate() {
   };
 }
 
+/**
+ * @typedef {import('../src/adapterManager.js').BidRequest<'mediakeys'>} BidRequest
+ * @typedef {import('../src/adapterManager.js').BidderRequest<'mediakeys'>} BidderRequest
+ * @typedef {import('../src/types/ortb/request.d.ts').ORTBRequest} ORTBRequest
+ */
+
+/**
+ * @typedef {Object} MediakeysUserExt
+ * @property {string} [consent] TCF consent string
+ * @property {Array<object>} [eids] user ids in OpenRTB eids format
+ */
+
+/**
+ * @typedef {Object} MediakeysRegsExt
+ * @property {0|1} [gdpr] whether GDPR applies
+ * @property {string} [us_privacy] US Privacy (CCPA) string
+ */
+
+/**
+ * Adds schain, user ids and privacy signals (GDPR, USP, COPPA) to the payload.
+ *
+ * @param {ORTBRequest} payload OpenRTB request being built, mutated in place
+ * @param {Array<BidRequest>} validBidRequests bid requests of a single bidder request
+ * @param {BidderRequest} [bidderRequest]
+ * @returns {void}
+ */
 function addRequestSignals(payload, validBidRequests, bidderRequest) {
+  // All bids of a bidder request share the same `ortb2` (and `userIdAsEids`), so the first one is enough.
+  const [firstBidRequest] = validBidRequests;
   const { gdprConsent, uspConsent } = bidderRequest || {};
+  /** @type {Array<object>|undefined} */
+  const eids = deepAccess(firstBidRequest, 'userIdAsEids');
+  /** @type {object|undefined} */
+  const schain = deepAccess(firstBidRequest, 'ortb2.source.ext.schain');
+  /** @type {MediakeysUserExt} */
   const userExt = cleanObj({
     consent: gdprConsent?.consentString,
-    eids: deepAccess(validBidRequests[0], 'userIdAsEids')
+    eids
   });
+  /** @type {MediakeysRegsExt} */
   const regsExt = cleanObj({
     gdpr: gdprConsent ? Number(Boolean(gdprConsent.gdprApplies)) : undefined,
     us_privacy: uspConsent
   });
-  const schain = deepAccess(validBidRequests[0], 'ortb2.source.ext.schain');
 
   if (schain) {
     deepSetValue(payload, 'source.ext.schain', schain);
@@ -243,23 +276,34 @@ function addRequestSignals(payload, validBidRequests, bidderRequest) {
 }
 
 /**
- * Returns an openRtb 2.5 banner object.
+ * @typedef {[width: number|string, height: number|string]} MediakeysBannerSize
+ */
+
+/**
+ * @typedef {Object} MediakeysBannerBid
+ * @property {{banner: {sizes: Array<MediakeysBannerSize>}}} mediaTypes
+ * @property {{adUnit?: string, pos?: number}} [params]
+ */
+
+/**
+ * Returns an openRtb 2.5 banner object, or undefined when the ad unit has no banner sizes.
  *
- * @param {object} bid Prebid bid object from request
- * @returns {object}
+ * @param {MediakeysBannerBid} bid Prebid bid object from request
+ * @returns {object|undefined}
  */
 function createBannerImp(bid) {
+  /** @type {Array<MediakeysBannerSize>} */
   const sizes = bid.mediaTypes.banner.sizes;
+  /** @type {{adUnit?: string, pos?: number}} */
   const params = deepAccess(bid, 'params', {});
 
   if (!isArray(sizes) || !sizes.length) {
-    logWarn(`${BIDDER_CODE}: mediaTypes.banner.size missing for adunit: ${bid.params.adUnit}. Ignoring the banner impression in the adunit.`);
+    logWarn(`${BIDDER_CODE}: mediaTypes.banner.size missing for adunit: ${params.adUnit}. Ignoring the banner impression in the adunit.`);
   } else {
+    const [width, height] = sizes[0];
+
     return {
-      ...sizeTupleToRtbSize([
-        parseInt(sizes[0][0], 10),
-        parseInt(sizes[0][1], 10)
-      ]),
+      ...sizeTupleToRtbSize([parseInt(width, 10), parseInt(height, 10)]),
       format: sizes
         .filter(size => size.length > 1)
         .map(sizeTupleToRtbSize),
@@ -422,9 +466,8 @@ function createVideoImp(bid) {
   const videoAdUnitParams = deepAccess(bid, 'mediaTypes.video', {});
   const videoBidderParams = deepAccess(bid, 'params.video', {});
   const playerSize = videoAdUnitParams.playerSize;
-  const computedParams = Array.isArray(playerSize)
-    ? parseGPTSingleSizeArrayToRtbSize(Array.isArray(playerSize[0]) ? playerSize[0] : playerSize) || {}
-    : {};
+  const [size] = Array.isArray(playerSize?.[0]) ? playerSize : [playerSize];
+  const computedParams = parseGPTSingleSizeArrayToRtbSize(size) || {};
 
   // Special case for playerSize.
   // Eeach props will be overrided if they are defined in config.

@@ -227,6 +227,54 @@ describe('mediakeysBidAdapter', function () {
       expect(data.imp[0].ext.data.something).to.equal('test');
     });
 
+    describe('banner imp', function() {
+      it('should use the first size as w/h and keep all sizes in format', function() {
+        const bidRequests = [utils.deepClone(bid)];
+        bidRequests[0].mediaTypes.banner.sizes = [['728', '90'], [970, 250]];
+
+        const banner = spec.buildRequests(bidRequests, bidderRequest).data.imp[0].banner;
+
+        expect(banner.w).to.equal(728);
+        expect(banner.h).to.equal(90);
+        expect(banner.format).to.deep.equal([{ w: '728', h: '90' }, { w: 970, h: 250 }]);
+      });
+
+      it('should skip malformed sizes in format', function() {
+        const bidRequests = [utils.deepClone(bid)];
+        bidRequests[0].mediaTypes.banner.sizes = [[300, 250], [728], [], [300, 600]];
+
+        const banner = spec.buildRequests(bidRequests, bidderRequest).data.imp[0].banner;
+
+        expect(banner.w).to.equal(300);
+        expect(banner.h).to.equal(250);
+        expect(banner.format).to.deep.equal([{ w: 300, h: 250 }, { w: 300, h: 600 }]);
+      });
+
+      it('should not create a banner object when sizes are missing', function() {
+        [[], undefined, 'foo'].forEach(sizes => {
+          const bidRequests = [utils.deepClone(bid)];
+          bidRequests[0].mediaTypes.banner.sizes = sizes;
+
+          const logWarnStub = sandbox.stub(utils, 'logWarn');
+          const imps = spec.buildRequests(bidRequests, bidderRequest).data.imp;
+          logWarnStub.restore();
+
+          expect(logWarnStub.calledOnce, JSON.stringify(sizes)).to.equal(true);
+          expect(imps.length).to.equal(1);
+          expect(imps[0].banner, JSON.stringify(sizes)).to.not.exist;
+        });
+      });
+
+      it('should set topframe to 1 when not in an iframe', function() {
+        sandbox.stub(utils, 'inIframe').returns(false);
+        const bidRequests = [utils.deepClone(bid)];
+
+        const banner = spec.buildRequests(bidRequests, bidderRequest).data.imp[0].banner;
+
+        expect(banner.topframe).to.equal(1);
+      });
+    });
+
     describe('native imp', function() {
       it('should get a native object in request', function() {
         const bidRequests = [utils.deepClone(bidNative)];
@@ -482,6 +530,151 @@ describe('mediakeysBidAdapter', function () {
         utilsMock.expects('logWarn').twice();
 
         spec.buildRequests(bidRequests, bidderRequestCopy);
+      });
+
+      it('should read w/h from a nested playerSize', function() {
+        const bidRequests = [utils.deepClone(bidVideo)];
+        bidRequests[0].mediaTypes.video.playerSize = [[1920, 1080]];
+        const bidderRequestCopy = utils.deepClone(bidderRequest);
+        bidderRequestCopy.bids = bidRequests;
+
+        const video = spec.buildRequests(bidRequests, bidderRequestCopy).data.imp[0].video;
+
+        expect(video.w).to.equal(1920);
+        expect(video.h).to.equal(1080);
+      });
+
+      it('should read w/h from the first size of a multi-size playerSize', function() {
+        const bidRequests = [utils.deepClone(bidVideo)];
+        bidRequests[0].mediaTypes.video.playerSize = [[1920, 1080], [640, 360]];
+        const bidderRequestCopy = utils.deepClone(bidderRequest);
+        bidderRequestCopy.bids = bidRequests;
+
+        const video = spec.buildRequests(bidRequests, bidderRequestCopy).data.imp[0].video;
+
+        expect(video.w).to.equal(1920);
+        expect(video.h).to.equal(1080);
+      });
+
+      it('should merge pause ad ORTB video properties from bidder params', function() {
+        const bidRequests = [utils.deepClone(bidVideo)];
+        bidRequests[0].mediaTypes.video.plcmt = 1;
+        bidRequests[0].mediaTypes.video.pos = 1;
+        bidRequests[0].params.video = {
+          plcmt: 5,
+          pos: 8,
+          linearity: 2,
+          playbackmethod: [9],
+          battr: [22, 23]
+        };
+        const bidderRequestCopy = utils.deepClone(bidderRequest);
+        bidderRequestCopy.bids = bidRequests;
+
+        const video = spec.buildRequests(bidRequests, bidderRequestCopy).data.imp[0].video;
+
+        expect(video.plcmt).to.equal(5);
+        expect(video.pos).to.equal(8);
+        expect(video.linearity).to.equal(2);
+        expect(video.playbackmethod).to.deep.equal([9]);
+        expect(video.battr).to.deep.equal([22, 23]);
+      });
+
+      it('should drop and warn on below range pause ad ORTB video values', function() {
+        const bidRequests = [utils.deepClone(bidVideo)];
+        bidRequests[0].mediaTypes.video.plcmt = 0;
+        bidRequests[0].mediaTypes.video.pos = -1;
+        bidRequests[0].mediaTypes.video.playbackmethod = [0];
+        const bidderRequestCopy = utils.deepClone(bidderRequest);
+        bidderRequestCopy.bids = bidRequests;
+
+        utilsMock.expects('logWarn').thrice();
+
+        const video = spec.buildRequests(bidRequests, bidderRequestCopy).data.imp[0].video;
+
+        expect(video.plcmt).to.not.exist;
+        expect(video.pos).to.not.exist;
+        expect(video.playbackmethod).to.not.exist;
+        utilsMock.verify();
+      });
+
+      it('should not set w/h when playerSize is malformed', function() {
+        [[640], [[640]], ['foo', 'bar'], [640, 360, 1], 'foo'].forEach(playerSize => {
+          const bidRequests = [utils.deepClone(bidVideo)];
+          bidRequests[0].mediaTypes.video.playerSize = playerSize;
+          const bidderRequestCopy = utils.deepClone(bidderRequest);
+          bidderRequestCopy.bids = bidRequests;
+
+          const video = spec.buildRequests(bidRequests, bidderRequestCopy).data.imp[0].video;
+
+          expect(video.w, JSON.stringify(playerSize)).to.not.exist;
+          expect(video.h, JSON.stringify(playerSize)).to.not.exist;
+        });
+      });
+
+      it('should let explicit w/h override playerSize', function() {
+        const bidRequests = [utils.deepClone(bidVideo)];
+        bidRequests[0].mediaTypes.video.w = 1280;
+        bidRequests[0].mediaTypes.video.h = 720;
+        const bidderRequestCopy = utils.deepClone(bidderRequest);
+        bidderRequestCopy.bids = bidRequests;
+
+        const video = spec.buildRequests(bidRequests, bidderRequestCopy).data.imp[0].video;
+
+        expect(video.w).to.equal(1280);
+        expect(video.h).to.equal(720);
+      });
+
+      it('should accept boundary pause ad ORTB video values', function() {
+        const bidRequests = [utils.deepClone(bidVideo)];
+        bidRequests[0].mediaTypes.video.protocols = [1, 9, 10, 15, 16];
+        bidRequests[0].mediaTypes.video.battr = [1, 17, 18, 19, 20, 21, 23];
+        bidRequests[0].mediaTypes.video.playbackmethod = [7, 11];
+        bidRequests[0].mediaTypes.video.plcmt = 1;
+        bidRequests[0].mediaTypes.video.pos = 0;
+        const bidderRequestCopy = utils.deepClone(bidderRequest);
+        bidderRequestCopy.bids = bidRequests;
+
+        utilsMock.expects('logWarn').never();
+
+        const video = spec.buildRequests(bidRequests, bidderRequestCopy).data.imp[0].video;
+
+        expect(video.protocols).to.deep.equal([1, 9, 10, 15, 16]);
+        expect(video.battr).to.deep.equal([1, 17, 18, 19, 20, 21, 23]);
+        expect(video.playbackmethod).to.deep.equal([7, 11]);
+        expect(video.plcmt).to.equal(1);
+        expect(video.pos).to.equal(0);
+      });
+
+      it('should drop non-integer plcmt, pos and playbackmethod values', function() {
+        [5.5, '5', null].forEach(value => {
+          const bidRequests = [utils.deepClone(bidVideo)];
+          bidRequests[0].mediaTypes.video.plcmt = value;
+          bidRequests[0].mediaTypes.video.pos = value;
+          bidRequests[0].mediaTypes.video.playbackmethod = [value];
+          const bidderRequestCopy = utils.deepClone(bidderRequest);
+          bidderRequestCopy.bids = bidRequests;
+
+          const video = spec.buildRequests(bidRequests, bidderRequestCopy).data.imp[0].video;
+
+          expect(video.plcmt, JSON.stringify(value)).to.not.exist;
+          expect(video.pos, JSON.stringify(value)).to.not.exist;
+          expect(video.playbackmethod, JSON.stringify(value)).to.not.exist;
+        });
+      });
+
+      it('should drop protocols and battr containing an invalid value', function() {
+        [[0], [7.5], ['7'], [7, 24], 7].forEach(value => {
+          const bidRequests = [utils.deepClone(bidVideo)];
+          bidRequests[0].mediaTypes.video.protocols = value;
+          bidRequests[0].mediaTypes.video.battr = value;
+          const bidderRequestCopy = utils.deepClone(bidderRequest);
+          bidderRequestCopy.bids = bidRequests;
+
+          const video = spec.buildRequests(bidRequests, bidderRequestCopy).data.imp[0].video;
+
+          expect(video.protocols, JSON.stringify(value)).to.not.exist;
+          expect(video.battr, JSON.stringify(value)).to.not.exist;
+        });
       });
     });
 
