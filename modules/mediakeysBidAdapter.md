@@ -64,7 +64,20 @@ var adUnits = [{
 
 ## Video only Ad Unit
 
-The Mediakeys adapter accepts any valid openRTB 2.5 video property. Properties can be defined at the adUnit `mediaTypes.video` or `bid[].params` level.
+The Mediakeys adapter accepts any valid OpenRTB 2.6 video property, including the enum values added by the [IAB CTV signaling guidelines](https://github.com/InteractiveAdvertisingBureau/Ad-Format-Guidelines-for-Digital-Video-CTV/blob/main/Signaling-Implementation-Guidelines.md) for pause ads and screensavers. Properties can be defined at the adUnit `mediaTypes.video` or `bid[].params` level.
+
+Accepted enum values:
+
+| Property | Values |
+|---|---|
+| `plcmt` | `1`–`6` |
+| `pos` | `0`–`8` |
+| `linearity` | `1` linear, `2` non-linear |
+| `playbackmethod` | `1`–`11` |
+| `battr` | `1`–`23` |
+| `protocols` | `1`–`16` (up to VAST 4.3 wrapper) |
+
+Values outside these ranges cause the whole property to be dropped from the request.
 
 ### Outstream context
 
@@ -144,6 +157,35 @@ var adUnits = [{
             // additional OpenRTB video params.
             // will be merged with params defined at mediaTypes level
         }
+    }]
+}]
+```
+
+### Pause ad / screensaver
+
+Pause ads and screensavers are signaled on the video impression as a non-linear placement. A bid response may carry either a `vastUrl` or an inline NonLinear VAST document in `vastXml`.
+
+For the `instream` example below, inline-only VAST responses require Prebid caching configured through `cache.url` or `cache.useLocal: true`. Alternatively, integrations that consume `vastXml` directly can enable `cache.allowVastXmlOnly: true`. Without one of these settings, Prebid rejects inline-only instream bids.
+
+```javascript
+var adUnits = [{
+    code: 'test',
+    mediaTypes: {
+        video: {
+            context: 'instream',
+            playerSize: [1920, 1080],
+            linearity: 2,           // non-linear
+            plcmt: 5,               // pause ad (6 for screensaver)
+            pos: 7,                 // fullscreen (8 for partial screen)
+            playbackmethod: [9],    // pause ad, sound off
+            battr: [22, 23],        // static image only: block cinemagraph and full-motion video
+            mimes: ['image/jpeg', 'image/png'],
+            protocols: [7, 8]
+        }
+    },
+    bids: [{
+        bidder: 'mediakeys',
+        params: {}
     }]
 }]
 ```
