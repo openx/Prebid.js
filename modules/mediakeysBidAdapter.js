@@ -57,8 +57,10 @@ const ORTB_NATIVE_PARAMS = {
   plcmttype: value => [1, 2, 3, 4].indexOf(value) !== -1
 };
 
-// This provide a whitelist and a basic validation of OpenRTB 2.5 video options.
-// https://www.iab.com/wp-content/uploads/2016/03/OpenRTB-API-Specification-Version-2-5-FINAL.pdf
+// This provide a whitelist and a basic validation of OpenRTB 2.6 video options, using AdCOM 1.0 enum values
+// extended by the IAB CTV pause ad / screensaver signaling (plcmt 5-6, pos 8, playbackmethod 8-11, battr 19-23).
+// https://github.com/InteractiveAdvertisingBureau/openrtb2.x/blob/main/2.6.md
+// https://github.com/InteractiveAdvertisingBureau/Ad-Format-Guidelines-for-Digital-Video-CTV/blob/main/Signaling-Implementation-Guidelines.md
 const ORTB_VIDEO_PARAMS = {
   mimes: value => Array.isArray(value) && value.length > 0 && value.every(v => typeof v === 'string'),
   minduration: value => isInteger(value),
