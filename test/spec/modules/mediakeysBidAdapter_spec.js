@@ -415,6 +415,65 @@ describe('mediakeysBidAdapter', function () {
         expect(data.imp[0].video.companiontype).to.not.exist;
       });
 
+      it('should keep pause ad and screensaver ORTB video properties', function() {
+        const bidRequests = [utils.deepClone(bidVideo)];
+        bidRequests[0].mediaTypes.video.linearity = 2;
+        bidRequests[0].mediaTypes.video.plcmt = 5;
+        bidRequests[0].mediaTypes.video.pos = 8;
+        bidRequests[0].mediaTypes.video.playbackmethod = [8, 9];
+        bidRequests[0].mediaTypes.video.battr = [22, 23];
+        bidRequests[0].mediaTypes.video.mimes = ['image/jpeg', 'image/png', 'video/mp4'];
+        bidRequests[0].mediaTypes.video.protocols = [7, 8, 13, 14];
+        const bidderRequestCopy = utils.deepClone(bidderRequest);
+        bidderRequestCopy.bids = bidRequests;
+
+        utilsMock.expects('logWarn').never();
+
+        const video = spec.buildRequests(bidRequests, bidderRequestCopy).data.imp[0].video;
+
+        expect(video.linearity).to.equal(2);
+        expect(video.plcmt).to.equal(5);
+        expect(video.pos).to.equal(8);
+        expect(video.playbackmethod).to.deep.equal([8, 9]);
+        expect(video.battr).to.deep.equal([22, 23]);
+        expect(video.mimes).to.deep.equal(['image/jpeg', 'image/png', 'video/mp4']);
+        expect(video.protocols).to.deep.equal([7, 8, 13, 14]);
+      });
+
+      it('should keep screensaver ORTB video properties', function() {
+        const bidRequests = [utils.deepClone(bidVideo)];
+        bidRequests[0].mediaTypes.video.plcmt = 6;
+        bidRequests[0].mediaTypes.video.pos = 7;
+        bidRequests[0].mediaTypes.video.playbackmethod = [10, 11];
+        const bidderRequestCopy = utils.deepClone(bidderRequest);
+        bidderRequestCopy.bids = bidRequests;
+
+        const video = spec.buildRequests(bidRequests, bidderRequestCopy).data.imp[0].video;
+
+        expect(video.plcmt).to.equal(6);
+        expect(video.pos).to.equal(7);
+        expect(video.playbackmethod).to.deep.equal([10, 11]);
+      });
+
+      it('should ignore out of range pause ad ORTB video properties', function() {
+        const bidRequests = [utils.deepClone(bidVideo)];
+        bidRequests[0].mediaTypes.video.plcmt = 7;
+        bidRequests[0].mediaTypes.video.pos = 9;
+        bidRequests[0].mediaTypes.video.playbackmethod = [12];
+        bidRequests[0].mediaTypes.video.battr = [24];
+        bidRequests[0].mediaTypes.video.protocols = [17];
+        const bidderRequestCopy = utils.deepClone(bidderRequest);
+        bidderRequestCopy.bids = bidRequests;
+
+        const video = spec.buildRequests(bidRequests, bidderRequestCopy).data.imp[0].video;
+
+        expect(video.plcmt).to.not.exist;
+        expect(video.pos).to.not.exist;
+        expect(video.playbackmethod).to.not.exist;
+        expect(video.battr).to.not.exist;
+        expect(video.protocols).to.not.exist;
+      });
+
       it('should log warn message when OpenRTB validation fails ', function() {
         const bidRequests = [utils.deepClone(bidVideo)];
         bidRequests[0].mediaTypes.video.placement = 'string';
@@ -767,6 +826,24 @@ describe('mediakeysBidAdapter', function () {
       expect(response[0].vastXml).to.not.exist;
       expect(response[0].vastUrl).to.equal(vastUrl + '&no_cache');
       expect(response[0].videoCacheKey).to.equal('no_cache');
+    });
+
+    it('interprets video bid response with inline VAST', function () {
+      const vastXml = '<VAST version="4.2"><Ad><InLine><Creatives><Creative><NonLinearAds><NonLinear width="1920" height="1080"><StaticResource creativeType="image/jpeg"><![CDATA[https://url.local/pause.jpg]]></StaticResource></NonLinear></NonLinearAds></Creative></Creatives></InLine></Ad></VAST>';
+      const bidRequests = [utils.deepClone(bidVideo)];
+      const request = spec.buildRequests(bidRequests, bidderRequest);
+
+      const rawServerResponseVideo = utils.deepClone(rawServerResponse);
+      rawServerResponseVideo.body.seatbid[0].bid[0].ext.prebid.type = 'V';
+      rawServerResponseVideo.body.seatbid[0].bid[0].adm = vastXml;
+
+      const response = spec.interpretResponse(rawServerResponseVideo, request);
+
+      expect(response.length).to.equal(1);
+      expect(response[0].mediaType).to.equal('video');
+      expect(response[0].vastXml).to.equal(vastXml);
+      expect(response[0].vastUrl).to.not.exist;
+      expect(response[0].videoCacheKey).to.not.exist;
     });
 
     describe('Native response', function () {

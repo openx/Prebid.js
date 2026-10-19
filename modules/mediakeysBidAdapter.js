@@ -63,7 +63,7 @@ const ORTB_VIDEO_PARAMS = {
   mimes: value => Array.isArray(value) && value.length > 0 && value.every(v => typeof v === 'string'),
   minduration: value => isInteger(value),
   maxduration: value => isInteger(value),
-  protocols: value => Array.isArray(value) && value.every(v => [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].indexOf(v) !== -1),
+  protocols: value => Array.isArray(value) && value.every(v => isInteger(v) && v >= 1 && v <= 16),
   w: value => isInteger(value),
   h: value => isInteger(value),
   startdelay: value => isInteger(value),
@@ -74,7 +74,7 @@ const ORTB_VIDEO_PARAMS = {
   skipmin: value => isInteger(value),
   skipafter: value => isInteger(value),
   sequence: value => isInteger(value),
-  battr: value => Array.isArray(value) && value.every(v => Array.from({ length: 17 }, (_, i) => i + 1).includes(v)),
+  battr: value => Array.isArray(value) && value.every(v => isInteger(v) && v >= 1 && v <= 23),
   maxextended: value => isInteger(value),
   minbitrate: value => isInteger(value),
   maxbitrate: value => isInteger(value),
@@ -743,15 +743,17 @@ export const spec = {
               // Mediakeys bid adapter expects a publisher has set his own video player
               // in the `mediaTypes.video` configuration object.
 
-              // Mediakeys bidder does not provide inline XML in the bid response
-              // newBid.vastXml = bid.ext.vast_url;
+              if (deepAccess(bid, 'ext.vast_url')) {
+                // For instream video, disable server cache as vast is generated per bid request
+                newBid.videoCacheKey = 'no_cache';
 
-              // For instream video, disable server cache as vast is generated per bid request
-              newBid.videoCacheKey = 'no_cache';
-
-              // The vast URL is server independently and must be fetched before video rendering in the renderer
-              // appending '&no_cache' is safe and fast as the vast url always have parameters
-              newBid.vastUrl = bid.ext.vast_url + '&no_cache';
+                // The vast URL is server independently and must be fetched before video rendering in the renderer
+                // appending '&no_cache' is safe and fast as the vast url always have parameters
+                newBid.vastUrl = bid.ext.vast_url + '&no_cache';
+              } else if (bid.adm) {
+                // Inline VAST, e.g. a NonLinear pause/screensaver creative
+                newBid.vastXml = bid.adm;
+              }
             }
 
             bidResponses.push(newBid);
