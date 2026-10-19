@@ -165,6 +165,8 @@ var adUnits = [{
 
 Pause ads and screensavers are signaled on the video impression as a non-linear placement. A bid response may carry either a `vastUrl` or an inline NonLinear VAST document in `vastXml`.
 
+For the `instream` example below, inline-only VAST responses require Prebid caching configured through `cache.url` or `cache.useLocal: true`. Alternatively, integrations that consume `vastXml` directly can enable `cache.allowVastXmlOnly: true`. Without one of these settings, Prebid rejects inline-only instream bids.
+
 ```javascript
 var adUnits = [{
     code: 'test',
