@@ -749,7 +749,7 @@ export const spec = {
                 // For instream video, disable server cache as vast is generated per bid request
                 newBid.videoCacheKey = 'no_cache';
 
-                // The vast URL is server independently and must be fetched before video rendering in the renderer
+                // The vast URL is server independent and must be fetched before video rendering in the renderer
                 // appending '&no_cache' is safe and fast as the vast url always have parameters
                 newBid.vastUrl = bid.ext.vast_url + '&no_cache';
               } else if (bid.adm) {
